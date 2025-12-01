@@ -8,7 +8,9 @@
     </div>
   </div>
   {% if request.query_params.get("saved") %}
-  <div class="bg-green-100 p-3 rounded text-green-700">Ключ збережено</div>
+  <div class="bg-green-100 border border-green-300 text-green-800 p-3 rounded mb-3">
+    Налаштування успішно збережено.
+  </div>
   {% endif %}
   <form method="post" action="/settings" class="space-y-3">
     <label class="block text-sm font-medium text-gray-700">OpenAI API key</label>
