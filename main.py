@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List
@@ -19,6 +20,7 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 PRODUCTS_FILE = STORAGE_DIR / "products.json"
 COMPETITOR_FILE = STORAGE_DIR / "competitor.json"
 MATCH_FILE = STORAGE_DIR / "match.json"
+CONFIG_FILE = BASE_DIR / "config.json"
 
 app = FastAPI(title="Product Importer")
 app.mount("/storage", StaticFiles(directory=STORAGE_DIR), name="storage")
@@ -76,6 +78,10 @@ def save_json_file(path: Path, payload: Any) -> None:
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, ensure_ascii=False, indent=2)
+
+
+def load_config() -> Dict[str, Any]:
+    return load_json_file(CONFIG_FILE, {})
 
 
 def dataframe_to_products(df: pd.DataFrame) -> List[Dict[str, Any]]:
@@ -155,7 +161,7 @@ async def match_page(request: Request):
     competitor = load_json_file(COMPETITOR_FILE, {})
     matches = load_json_file(MATCH_FILE, [])
     return templates.TemplateResponse(
-        "match.html",
+        "test_parser.html",
         {
             "request": request,
             "competitor_root_url": competitor.get("root_url", ""),
@@ -190,6 +196,28 @@ async def save_competitor(competitor_root_url: str = Form(...)):
     return RedirectResponse(url="/competitor?saved=1", status_code=303)
 
 
+@app.get("/settings")
+async def settings_page(request: Request, saved: int | None = None):
+    config = load_config()
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "api_key": config.get("openai_api_key", ""),
+            "saved": bool(saved),
+            "active_tab": "settings",
+            "title": "Налаштування",
+        },
+    )
+
+
+@app.post("/settings")
+async def save_settings(api_key: str = Form("")):
+    payload = {"openai_api_key": api_key.strip()}
+    save_json_file(CONFIG_FILE, payload)
+    return RedirectResponse(url="/settings?saved=1", status_code=303)
+
+
 @app.get("/products", response_class=JSONResponse)
 async def get_products() -> JSONResponse:
     data = load_json_file(PRODUCTS_FILE, [])
@@ -207,7 +235,7 @@ async def upload_file(file: UploadFile = File(...)) -> JSONResponse:
     if suffix == ".csv":
         df = pd.read_csv(file.file)
     else:
-        df = pd.read_excel(file.file)
+        df = pd.read_excel(file.file, dtype=str)
 
     products = dataframe_to_products(df)
     save_products([])
@@ -225,6 +253,10 @@ async def run_match() -> JSONResponse:
     root_url = competitor.get("root_url", "").strip()
     if not root_url:
         raise HTTPException(status_code=400, detail="Спочатку збережіть URL конкурента")
+
+    api_key = os.getenv("OPENAI_API_KEY", "").strip() or str(load_config().get("openai_api_key", "")).strip()
+    if not api_key:
+        return JSONResponse(content={"error": "OpenAI API key не встановлено"}, status_code=400)
 
     try:
         client = get_openai_client()
