@@ -102,10 +102,17 @@ def dataframe_to_products(df: pd.DataFrame) -> List[Dict[str, Any]]:
             detail=f"Missing required columns: {', '.join(sorted(missing))}",
         )
 
+    # Налаштування довжини коду товару з конфігурації
+    config = load_json_file(BASE_DIR / "config.json", {})
+    length = int(config.get("code_length", 6))
+
     products: List[Dict[str, Any]] = []
     for _, row in df.iterrows():
         name = str(row.get("name", "")).strip()
-        code = str(row.get("code", "")).strip()
+        raw_code_value = row.get("code", "")
+        raw_code = "" if pd.isna(raw_code_value) else str(raw_code_value).strip()
+        raw_code = raw_code.split(".")[0]
+        code = raw_code.zfill(length)
         raw_value = row.get("attributes_raw")
         attributes_raw = "" if pd.isna(raw_value) else str(raw_value).strip()
         attributes_parsed = parse_attributes(attributes_raw)
@@ -328,6 +335,10 @@ async def matching_page(request: Request) -> HTMLResponse:
     competitors = list_competitors()
     matches = load_json_file(MATCH_FILE, [])
     products = load_json_file(PRODUCTS_FILE, [])
+    parsed_state: Dict[str, bool] = {}
+    for comp in competitors:
+        data = load_competitor_products(str(comp.get("id")))
+        parsed_state[str(comp.get("id"))] = len(data.get("categories", [])) > 0
     return templates.TemplateResponse(
         "matching.html",
         {
@@ -335,6 +346,7 @@ async def matching_page(request: Request) -> HTMLResponse:
             "competitors": competitors,
             "matches": matches,
             "product_count": len(products),
+            "parsed_state": parsed_state,
             "active_tab": "matching",
             "title": "Матчинг товарів",
         },
@@ -352,6 +364,9 @@ async def run_matching(competitor_ids: List[str] | str = Form(...)) -> RedirectR
     products_by_competitor: Dict[str, List[Dict[str, Any]]] = {}
     for competitor in competitors:
         data = load_competitor_products(competitor["id"])
+        parsed_state = len(data.get("categories", [])) > 0
+        if not parsed_state:
+            raise HTTPException(status_code=400, detail="Конкурента не розпарсено")
         aggregated: List[Dict[str, Any]] = []
         for category in data.get("categories", []):
             aggregated.extend(category.get("items", []))
@@ -370,6 +385,7 @@ async def settings_page(request: Request) -> HTMLResponse:
         {
             "request": request,
             "api_key": config.get("openai_api_key", ""),
+            "code_length": config.get("code_length", 6),
             "active_tab": "settings",
             "title": "Налаштування",
         },
@@ -377,8 +393,8 @@ async def settings_page(request: Request) -> HTMLResponse:
 
 
 @app.post("/settings")
-async def save_settings(api_key: str = Form("")) -> RedirectResponse:
-    payload = {"openai_api_key": api_key.strip()}
+async def save_settings(api_key: str = Form(""), code_length: str = Form("6")) -> RedirectResponse:
+    payload = {"openai_api_key": api_key.strip(), "code_length": int(code_length)}
     save_json_file(BASE_DIR / "config.json", payload)
     return RedirectResponse(url="/settings?saved=1", status_code=303)
 

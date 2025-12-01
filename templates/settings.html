@@ -7,9 +7,14 @@
       <h2 class="text-lg font-semibold">Налаштування OpenAI</h2>
     </div>
   </div>
+  {% if request.query_params.get("saved") %}
+  <div class="bg-green-100 p-3 rounded text-green-700">Ключ збережено</div>
+  {% endif %}
   <form method="post" action="/settings" class="space-y-3">
     <label class="block text-sm font-medium text-gray-700">OpenAI API key</label>
     <input name="api_key" value="{{ api_key }}" class="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="sk-..." />
+    <label class="block text-sm font-medium text-gray-700">Довжина коду товару</label>
+    <input name="code_length" value="{{ code_length }}" type="number" min="1" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
     <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Зберегти</button>
   </form>
 </section>
