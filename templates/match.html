@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="space-y-6">
+  <div class="rounded-xl border border-slate-200 bg-white shadow-sm p-6 space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <p class="text-sm text-gray-500">AI matching</p>
+        <h2 class="text-xl font-semibold text-gray-900">Тест парсера</h2>
+        <p class="text-sm text-gray-600">Зіставте власні товари з каталогом конкурента.</p>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button id="run-match" class="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">Запустити AI matching</button>
+        <a href="/competitor" class="inline-flex items-center justify-center px-4 py-2 bg-slate-100 text-gray-800 text-sm font-semibold rounded-lg border border-slate-200 hover:bg-slate-200">Налаштувати конкурента</a>
+      </div>
+    </div>
+    <div id="match-alert" class="hidden rounded-lg border px-4 py-3 text-sm"></div>
+    <div class="text-sm text-gray-600">Поточний конкурент: <span class="font-semibold text-gray-900" id="competitor-url">{{ competitor_root_url or 'не задано' }}</span></div>
+  </div>
+
+  <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+    <table class="min-w-full divide-y divide-slate-200">
+      <thead class="bg-slate-50">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Наш товар</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Код</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Знайдений лінк</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Впевненість</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Редагувати</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Зберегти</th>
+        </tr>
+      </thead>
+      <tbody id="match-table" class="divide-y divide-slate-200 text-sm">
+        {% for item in matches %}
+        <tr data-code="{{ item.our_code }}">
+          <td class="px-4 py-3 text-gray-900">{{ item.our_name }}</td>
+          <td class="px-4 py-3 text-gray-700">{{ item.our_code }}</td>
+          <td class="px-4 py-3 text-gray-700">
+            <div class="space-y-1">
+              <p class="match-url text-indigo-700 break-all">{{ item.competitor_url }}</p>
+              <input type="url" class="match-input hidden w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" value="{{ item.competitor_url }}" />
+            </div>
+          </td>
+          <td class="px-4 py-3 text-gray-700">{{ '%.2f' % item.confidence }}</td>
+          <td class="px-4 py-3 text-gray-700">
+            <button class="edit-btn inline-flex items-center px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold">Редагувати</button>
+          </td>
+          <td class="px-4 py-3 text-gray-700">
+            <button class="save-btn inline-flex items-center px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 text-xs font-semibold shadow-sm">Зберегти</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="px-4 py-5 text-center text-gray-500">Немає результатів matching</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  const matchTable = document.getElementById('match-table');
+  const matchAlert = document.getElementById('match-alert');
+  const competitorUrlLabel = document.getElementById('competitor-url');
+
+  const showAlert = (type, message) => {
+    matchAlert.classList.remove('hidden', 'border-green-200', 'border-red-200', 'bg-green-50', 'bg-red-50', 'text-green-800', 'text-red-800');
+    if (type === 'success') {
+      matchAlert.classList.add('border-green-200', 'bg-green-50', 'text-green-800');
+    } else {
+      matchAlert.classList.add('border-red-200', 'bg-red-50', 'text-red-800');
+    }
+    matchAlert.textContent = message;
+  };
+
+  const fetchMatches = async () => {
+    const response = await fetch('/match/data');
+    if (!response.ok) return;
+    const data = await response.json();
+    renderTable(data.matches || []);
+  };
+
+  const renderTable = (items) => {
+    matchTable.innerHTML = '';
+    if (!items.length) {
+      matchTable.innerHTML = '<tr><td colspan="6" class="px-4 py-5 text-center text-gray-500">Немає результатів matching</td></tr>';
+      return;
+    }
+
+    items.forEach((item) => {
+      const row = document.createElement('tr');
+      row.dataset.code = item.our_code;
+      row.innerHTML = `
+        <td class="px-4 py-3 text-gray-900">${item.our_name || ''}</td>
+        <td class="px-4 py-3 text-gray-700">${item.our_code || ''}</td>
+        <td class="px-4 py-3 text-gray-700">
+          <div class="space-y-1">
+            <p class="match-url text-indigo-700 break-all">${item.competitor_url || ''}</p>
+            <input type="url" class="match-input hidden w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" value="${item.competitor_url || ''}" />
+          </div>
+        </td>
+        <td class="px-4 py-3 text-gray-700">${Number(item.confidence || 0).toFixed(2)}</td>
+        <td class="px-4 py-3 text-gray-700">
+          <button class="edit-btn inline-flex items-center px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold">Редагувати</button>
+        </td>
+        <td class="px-4 py-3 text-gray-700">
+          <button class="save-btn inline-flex items-center px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 text-xs font-semibold shadow-sm">Зберегти</button>
+        </td>
+      `;
+      matchTable.appendChild(row);
+    });
+  };
+
+  matchTable.addEventListener('click', async (event) => {
+    const editBtn = event.target.closest('.edit-btn');
+    const saveBtn = event.target.closest('.save-btn');
+    const row = event.target.closest('tr');
+    if (!row) return;
+
+    const urlText = row.querySelector('.match-url');
+    const urlInput = row.querySelector('.match-input');
+
+    if (editBtn) {
+      urlInput.classList.toggle('hidden');
+      urlText.classList.toggle('hidden');
+      if (!urlInput.classList.contains('hidden')) {
+        urlInput.focus();
+      }
+      return;
+    }
+
+    if (saveBtn) {
+      const ourCode = row.dataset.code;
+      const value = urlInput.value || '';
+      const formData = new FormData();
+      formData.append('our_code', ourCode);
+      formData.append('competitor_url', value);
+      try {
+        const response = await fetch('/match/update', { method: 'POST', body: formData });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || 'Не вдалось оновити');
+        }
+        urlText.textContent = value;
+        urlInput.classList.add('hidden');
+        urlText.classList.remove('hidden');
+        showAlert('success', 'Зміни збережено');
+      } catch (error) {
+        showAlert('error', error.message);
+      }
+    }
+  });
+
+  document.getElementById('run-match').addEventListener('click', async () => {
+    showAlert('success', 'Запуск AI matching...');
+    try {
+      const response = await fetch('/match', { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Помилка виконання matching');
+      }
+      const data = await response.json();
+      renderTable(data.matches || []);
+      showAlert('success', 'Matching завершено');
+    } catch (error) {
+      showAlert('error', error.message);
+    }
+  });
+
+  fetchMatches();
+</script>
+{% endblock %}
