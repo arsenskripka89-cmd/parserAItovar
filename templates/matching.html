@@ -14,8 +14,11 @@
       <div class="grid md:grid-cols-2 gap-2">
         {% for competitor in competitors %}
         <label class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-          <input type="checkbox" name="competitor_ids" value="{{ competitor.id }}" class="rounded" {% if loop.first %}checked{% endif %} />
+          <input type="checkbox" name="competitor_ids" value="{{ competitor.id }}" class="rounded" {% if loop.first and parsed_state[competitor.id|string] %}checked{% endif %} {% if not parsed_state[competitor.id|string] %}disabled{% endif %} />
           <span class="text-sm text-gray-800">{{ competitor.name }}</span>
+          {% if not parsed_state[competitor.id|string] %}
+          <p class="text-red-500 text-sm">⚠ Конкурента не розпарсено — matching недоступний</p>
+          {% endif %}
         </label>
         {% endfor %}
       </div>

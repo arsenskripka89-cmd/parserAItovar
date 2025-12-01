@@ -8,6 +8,9 @@
         <h2 class="text-lg font-semibold">Наші товари</h2>
       </div>
     </div>
+    {% if request.query_params.get("uploaded") %}
+    <div class="bg-green-100 p-3 rounded text-green-700">Товари успішно завантажено</div>
+    {% endif %}
     <form method="post" action="/products/upload" enctype="multipart/form-data" class="space-y-3">
       <label class="block text-sm font-medium text-gray-700">Завантажте CSV/XLSX з полями name, code, attributes_raw</label>
       <input type="file" name="file" accept=".csv,.xlsx" required class="w-full rounded-lg border border-slate-300 px-3 py-2" />

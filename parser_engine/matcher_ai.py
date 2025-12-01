@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from difflib import SequenceMatcher
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from config import get_openai_client
 
@@ -38,6 +38,28 @@ def _heuristic_match(
     return matches
 
 
+def _safe_parse_matches(raw: str) -> Optional[List[Dict[str, str]]]:
+    """Безпечне парсення відповіді моделі в JSON."""
+
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return parsed
+    except Exception:
+        pass
+
+    start = raw.find("[")
+    end = raw.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        try:
+            parsed = json.loads(raw[start : end + 1])
+            if isinstance(parsed, list):
+                return parsed
+        except Exception:
+            return None
+    return None
+
+
 def _ai_match(
     our_products: List[Dict[str, str]], competitor_products: List[Dict[str, str]], competitor_name: str, competitor_id: str
 ) -> List[Dict[str, str]]:
@@ -46,11 +68,12 @@ def _ai_match(
     except Exception:
         return _heuristic_match(our_products, competitor_products, competitor_id)
 
+    top_competitor_products = competitor_products[:30]
     prompt = (
         "Зістав товари з нашого каталогу з товарами конкурента. Відповідай JSON масивом об'єктів "
         "{our_code, our_name, competitor_name, competitor_url, competitor_price, confidence}. "
         "Наші товари: " + json.dumps(our_products, ensure_ascii=False) + ". "
-        "Товари конкурента: " + json.dumps(competitor_products[:30], ensure_ascii=False)
+        "Топ-30 товарів конкурента: " + json.dumps(top_competitor_products, ensure_ascii=False)
     )
 
     try:
@@ -63,7 +86,10 @@ def _ai_match(
             ],
         )
         raw = completion.choices[0].message.content or "[]"
-        parsed = json.loads(raw)
+        parsed = _safe_parse_matches(raw)
+        if parsed is None:
+            return _heuristic_match(our_products, competitor_products, competitor_id)
+
         matches: List[Dict[str, str]] = []
         for item in parsed:
             matches.append(
