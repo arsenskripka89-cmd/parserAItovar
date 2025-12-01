@@ -8,7 +8,13 @@ version = "0.1.0"
 description = "Self-healing parser toolkit"
 authors = [{name = "AI"}]
 requires-python = ">=3.11"
-dependencies = ["openai>=1.0,<2.0"]
+dependencies = [
+    "openai>=1.0,<2.0",
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "pandas>=2.2",
+    "openpyxl>=3.1",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
