@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Парсер товарів</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-5xl mx-auto py-10 px-4">
+    <h1 class="text-3xl font-bold mb-6">Парсер товарів</h1>
+
+    <div class="border-b border-gray-200 mb-6">
+      <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+        <button data-tab="home" class="tab-link border-indigo-500 text-indigo-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Головна</button>
+        <button data-tab="upload" class="tab-link text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm">Завантаження товарів</button>
+      </nav>
+    </div>
+
+    <section id="tab-home" class="tab-panel">
+      <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-2">Ласкаво просимо</h2>
+        <p class="text-gray-700">Скористайтеся вкладкою «Завантаження товарів», щоб імпортувати CSV або Excel з характеристиками продукції.</p>
+      </div>
+    </section>
+
+    <section id="tab-upload" class="tab-panel hidden">
+      <div class="bg-white shadow rounded-lg p-6 space-y-6">
+        <div>
+          <h2 class="text-xl font-semibold mb-2">Імпорт файлів</h2>
+          <p class="text-gray-700 mb-4">Підтримуються файли CSV та Excel (.xlsx) зі стовпцями <code>name</code>, <code>code</code>, <code>attributes_raw</code>.</p>
+          <form id="upload-form" class="space-y-4">
+            <input id="file-input" type="file" accept=".csv,.xlsx" class="block w-full text-sm text-gray-700" required />
+            <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">Завантажити</button>
+          </form>
+          <p id="upload-status" class="text-sm text-red-600 mt-2"></p>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold">Імпортовані товари</h3>
+            <span id="product-count" class="text-sm text-gray-500"></span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Назва</th>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Код</th>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Кількість характеристик</th>
+                </tr>
+              </thead>
+              <tbody id="product-table" class="bg-white divide-y divide-gray-200"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const tabLinks = document.querySelectorAll('.tab-link');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    function switchTab(target) {
+      tabLinks.forEach((btn) => {
+        const isActive = btn.dataset.tab === target;
+        btn.classList.toggle('border-indigo-500', isActive);
+        btn.classList.toggle('text-indigo-600', isActive);
+        btn.classList.toggle('text-gray-500', !isActive);
+        btn.classList.toggle('border-transparent', !isActive);
+      });
+
+      tabPanels.forEach((panel) => {
+        panel.classList.toggle('hidden', panel.id !== `tab-${target}`);
+      });
+    }
+
+    tabLinks.forEach((btn) => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    const uploadForm = document.getElementById('upload-form');
+    const fileInput = document.getElementById('file-input');
+    const statusEl = document.getElementById('upload-status');
+    const tableBody = document.getElementById('product-table');
+    const countEl = document.getElementById('product-count');
+
+    function renderProducts(products) {
+      tableBody.innerHTML = '';
+      products.forEach((product) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="px-4 py-2 text-sm text-gray-800">${product.name || ''}</td>
+          <td class="px-4 py-2 text-sm text-gray-800">${product.code || ''}</td>
+          <td class="px-4 py-2 text-sm text-gray-800">${product.attributes ? Object.keys(product.attributes).length : 0}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+      countEl.textContent = products.length ? `Знайдено ${products.length} товар(и)` : 'Немає даних';
+    }
+
+    async function fetchProducts() {
+      const response = await fetch('/products');
+      if (response.ok) {
+        const data = await response.json();
+        renderProducts(data.products || []);
+      }
+    }
+
+    uploadForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      statusEl.textContent = '';
+
+      const file = fileInput.files[0];
+      if (!file) {
+        statusEl.textContent = 'Оберіть файл для завантаження.';
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await fetch('/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          statusEl.textContent = error.detail || 'Помилка завантаження файлу.';
+          return;
+        }
+
+        const data = await response.json();
+        renderProducts(data.products || []);
+        switchTab('upload');
+        statusEl.textContent = 'Файл успішно завантажено.';
+        statusEl.classList.remove('text-red-600');
+        statusEl.classList.add('text-green-600');
+      } catch (error) {
+        statusEl.textContent = 'Сталася помилка під час завантаження.';
+        statusEl.classList.add('text-red-600');
+      }
+    });
+
+    fetchProducts();
+  </script>
+</body>
+</html>
