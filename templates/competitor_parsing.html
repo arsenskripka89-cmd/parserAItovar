@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid gap-6">
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-xs text-gray-500">Крок 3</p>
+        <h2 class="text-lg font-semibold">Парсинг конкурента</h2>
+        <p class="text-sm text-gray-600">{{ competitor.name }} · {{ competitor.root_url }}</p>
+      </div>
+      <a href="/competitors" class="text-sm text-indigo-700 hover:underline">← до списку</a>
+    </div>
+    {% if message == 'parsed' %}
+      <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg mb-3">Дані збережено.</div>
+    {% endif %}
+    {% if not categories %}
+      <p class="text-sm text-gray-600">Не вдалося знайти категорії. Перевірте правила або URL.</p>
+    {% else %}
+    <form method="post" action="/competitor/{{ competitor.id }}/parsing" class="space-y-4">
+      <div class="grid md:grid-cols-2 gap-3">
+        {% for category in categories %}
+        <label class="flex items-start gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 hover:border-indigo-300">
+          <input type="checkbox" name="category_urls" value="{{ category.url }}" class="mt-1" checked />
+          <div>
+            <p class="text-sm font-medium text-gray-900">{{ category.name }}</p>
+            <p class="text-xs text-gray-600 break-all">{{ category.url }}</p>
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="flex justify-end">
+        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Запустити парсинг</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Збережені товари</h2>
+      {% if existing.scraped_at %}
+      <p class="text-xs text-gray-500">Оновлено {{ existing.scraped_at }}</p>
+      {% endif %}
+    </div>
+    {% if existing.categories %}
+    <div class="space-y-3">
+      {% for category in existing.categories %}
+      <div class="border border-slate-200 rounded-lg p-3">
+        <div class="flex justify-between items-center">
+          <p class="text-sm font-semibold">{{ category.url }}</p>
+          <span class="text-xs text-gray-500">{{ category.items|length }} товарів</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="text-sm text-gray-600">Товари конкурента ще не збережені.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
