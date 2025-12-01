@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="space-y-6">
+  <div class="rounded-xl border border-slate-200 bg-white shadow-sm p-6 space-y-4">
+    <div>
+      <p class="text-sm text-gray-500">Конфігурація</p>
+      <h2 class="text-xl font-semibold text-gray-900">Налаштування OpenAI</h2>
+      <p class="text-sm text-gray-600">Збережіть ключ для запуску AI matching.</p>
+    </div>
+
+    {% if saved %}
+    <div class="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+      API ключ успішно збережено.
+    </div>
+    {% endif %}
+
+    <form method="post" action="/settings" class="space-y-4">
+      <div class="space-y-2">
+        <label for="api_key" class="block text-sm font-medium text-gray-700">OpenAI API key</label>
+        <input
+          id="api_key"
+          name="api_key"
+          type="text"
+          value="{{ api_key }}"
+          class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+          placeholder="sk-..."
+        />
+      </div>
+      <button
+        type="submit"
+        class="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+      >
+        Зберегти API ключ
+      </button>
+    </form>
+  </div>
+</section>
+{% endblock %}
