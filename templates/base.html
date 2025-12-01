@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title or 'Система парсингу' }} · Парсер товарів</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-gray-900 min-h-screen">
+  <header class="bg-white border-b border-slate-200 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+      <div>
+        <p class="text-xs text-gray-500">FastAPI · Jinja2 · Tailwind</p>
+        <h1 class="text-xl font-semibold text-gray-900">Парсер товарів</h1>
+      </div>
+      <nav class="flex gap-2" aria-label="Primary">
+        <a href="/" class="px-3 py-2 text-sm rounded-lg {{ 'bg-indigo-50 text-indigo-700 font-semibold' if active_tab == 'upload' else 'text-gray-700 hover:bg-slate-100' }}">Завантаження</a>
+        <a href="/match" class="px-3 py-2 text-sm rounded-lg {{ 'bg-indigo-50 text-indigo-700 font-semibold' if active_tab == 'match' else 'text-gray-700 hover:bg-slate-100' }}">Тест парсера</a>
+        <a href="/competitor" class="px-3 py-2 text-sm rounded-lg {{ 'bg-indigo-50 text-indigo-700 font-semibold' if active_tab == 'competitor' else 'text-gray-700 hover:bg-slate-100' }}">Конкурент</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
