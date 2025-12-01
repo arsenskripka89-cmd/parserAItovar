@@ -48,6 +48,7 @@ def _safe_parse_matches(raw: str) -> Optional[List[Dict[str, str]]]:
     except Exception:
         pass
 
+    # Якщо відповідь моделі містить непотрібний текст, пробуємо знайти JSON масив
     start = raw.find("[")
     end = raw.rfind("]")
     if start != -1 and end != -1 and end > start:

@@ -9,6 +9,19 @@
         <p class="text-sm text-gray-600">Наших товарів: {{ product_count }}</p>
       </div>
     </div>
+    {% set any_ready = false %}
+    {% for cid, state in parsed_state.items() %}
+        {% if state %}
+            {% set any_ready = true %}
+        {% endif %}
+    {% endfor %}
+
+    {% if not any_ready %}
+    <div class="bg-yellow-100 text-yellow-800 p-3 rounded-lg mb-4">
+      Немає жодного конкурента з розпарсеними товарами.
+      Перейдіть у розділ “Конкуренти”, оберіть конкурента і запустіть парсинг категорій.
+    </div>
+    {% endif %}
     <form method="post" action="/matching" class="space-y-3">
       <p class="text-sm text-gray-700">Оберіть конкурентів для матчінгу</p>
       <div class="grid md:grid-cols-2 gap-2">

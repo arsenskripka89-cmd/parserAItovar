@@ -104,7 +104,12 @@ def dataframe_to_products(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
     # Налаштування довжини коду товару з конфігурації
     config = load_json_file(BASE_DIR / "config.json", {})
-    length = int(config.get("code_length", 6))
+    try:
+        length = int(config.get("code_length", 6))
+        if length < 1:
+            length = 6
+    except Exception:
+        length = 6
 
     products: List[Dict[str, Any]] = []
     for _, row in df.iterrows():
@@ -112,7 +117,11 @@ def dataframe_to_products(df: pd.DataFrame) -> List[Dict[str, Any]]:
         raw_code_value = row.get("code", "")
         raw_code = "" if pd.isna(raw_code_value) else str(raw_code_value).strip()
         raw_code = raw_code.split(".")[0]
-        code = raw_code.zfill(length)
+        # Якщо код має не тільки цифри — не застосовувати zfill
+        if raw_code.isdigit():
+            code = raw_code.zfill(length)
+        else:
+            code = raw_code
         raw_value = row.get("attributes_raw")
         attributes_raw = "" if pd.isna(raw_value) else str(raw_value).strip()
         attributes_parsed = parse_attributes(attributes_raw)
@@ -366,7 +375,10 @@ async def run_matching(competitor_ids: List[str] | str = Form(...)) -> RedirectR
         data = load_competitor_products(competitor["id"])
         parsed_state = len(data.get("categories", [])) > 0
         if not parsed_state:
-            raise HTTPException(status_code=400, detail="Конкурента не розпарсено")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Конкурента '{competitor['name']}' не розпарсено — спочатку запустіть парсинг у вкладці Конкуренти."
+            )
         aggregated: List[Dict[str, Any]] = []
         for category in data.get("categories", []):
             aggregated.extend(category.get("items", []))
