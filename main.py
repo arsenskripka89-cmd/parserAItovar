@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List
@@ -233,7 +232,7 @@ async def upload_file(file: UploadFile = File(...)) -> JSONResponse:
         raise HTTPException(status_code=400, detail="Only .csv and .xlsx files are supported")
 
     if suffix == ".csv":
-        df = pd.read_csv(file.file)
+        df = pd.read_csv(file.file, dtype=str)
     else:
         df = pd.read_excel(file.file, dtype=str)
 
@@ -254,43 +253,58 @@ async def run_match() -> JSONResponse:
     if not root_url:
         raise HTTPException(status_code=400, detail="Спочатку збережіть URL конкурента")
 
-    api_key = os.getenv("OPENAI_API_KEY", "").strip() or str(load_config().get("openai_api_key", "")).strip()
-    if not api_key:
-        return JSONResponse(content={"error": "OpenAI API key не встановлено"}, status_code=400)
-
     try:
         client = get_openai_client()
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     matches: List[Dict[str, Any]] = []
 
-    for product in products:
-        prompt = prepare_match_prompt(root_url, product)
-        try:
-            completion = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                temperature=0.2,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Ти допомагаєш знаходити відповідні товари на сайті конкурента. Відповідай у форматі JSON.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-            )
-            message_content = completion.choices[0].message.content or ""
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=500, detail=f"Помилка виклику моделі: {exc}") from exc
+    try:
+        for product in products:
+            prompt = prepare_match_prompt(root_url, product)
 
-        parsed = parse_match_response(message_content)
-        matches.append(
-            {
-                "our_code": product.get("code", ""),
-                "our_name": product.get("name", ""),
-                "competitor_url": parsed.get("competitor_url", ""),
-                "confidence": parsed.get("confidence", 0.0),
-            }
-        )
+            try:
+                completion = client.chat.completions.create(
+                    model="gpt-4.1-mini",
+                    temperature=0.2,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "Ти допомагаєш знаходити відповідні товари на сайті конкурента. Відповідай у форматі JSON.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                )
+                message_content = completion.choices[0].message.content or ""
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(status_code=500, detail=f"Помилка виклику моделі: {exc}") from exc
+
+            if not message_content.strip():
+                matches.append(
+                    {
+                        "our_code": product.get("code", ""),
+                        "our_name": product.get("name", ""),
+                        "competitor_url": "",
+                        "confidence": 0.0,
+                    }
+                )
+                continue
+
+            parsed = parse_match_response(message_content)
+            matches.append(
+                {
+                    "our_code": product.get("code", ""),
+                    "our_name": product.get("name", ""),
+                    "competitor_url": parsed.get("competitor_url", ""),
+                    "confidence": parsed.get("confidence", 0.0),
+                }
+            )
+    except HTTPException:
+        save_json_file(MATCH_FILE, matches)
+        raise
+    except Exception as exc:  # noqa: BLE001
+        save_json_file(MATCH_FILE, matches)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     save_json_file(MATCH_FILE, matches)
     return JSONResponse(content={"matches": matches})
