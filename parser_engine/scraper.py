@@ -9,6 +9,19 @@ import httpx
 from selectolax.parser import HTMLParser
 
 
+class ScraperError(Exception):
+    """Raised when scraping fails because of invalid selectors or missing data."""
+
+
+DEFAULT_RULES = {
+    "product_item": ".product-card,.product,.product-item",
+    "name_selector": ".product-title,.title,h2,h3",
+    "price_selector": ".price,.product-price",
+    "url_selector": "a",
+    "category_link": "nav a, .menu a, .catalog a",
+}
+
+
 @dataclass
 class Category:
     name: str
@@ -30,11 +43,21 @@ async def fetch_html(url: str) -> str:
         return response.text
 
 
+def _validate_selector(parser: HTMLParser, selector: str) -> List[HTMLParser]:
+    try:
+        return parser.css(selector)
+    except Exception as exc:  # pragma: no cover - selectolax specific errors
+        raise ScraperError(f"Invalid selector: {selector}") from exc
+
+
 def _get_first_text(node: Optional[HTMLParser], selectors: List[str]) -> str:
     if not node:
         return ""
     for selector in selectors:
-        target = node.css_first(selector)
+        try:
+            target = node.css_first(selector)
+        except Exception as exc:  # pragma: no cover - selectolax specific errors
+            raise ScraperError(f"Invalid selector: {selector}") from exc
         if target and target.text():
             return target.text().strip()
     return ""
@@ -44,7 +67,10 @@ def _find_link(node: Optional[HTMLParser], selectors: List[str]) -> str:
     if not node:
         return ""
     for selector in selectors:
-        target = node.css_first(selector)
+        try:
+            target = node.css_first(selector)
+        except Exception as exc:  # pragma: no cover - selectolax specific errors
+            raise ScraperError(f"Invalid selector: {selector}") from exc
         if target:
             href = target.attributes.get("href")
             if href:
@@ -61,31 +87,52 @@ def _parse_price(text: str) -> Optional[float]:
         return None
 
 
-async def discover_categories(root_url: str, rules: Dict[str, str] | None = None) -> List[Category]:
-    html = await fetch_html(root_url)
+def parse_products(html: str, base_url: str, rules: Dict[str, str]) -> List[ParsedProduct]:
     parser = HTMLParser(html)
+    item_selector = rules.get("product_item") or DEFAULT_RULES["product_item"]
+    name_selectors = (rules.get("name_selector") or DEFAULT_RULES["name_selector"]).split(",")
+    price_selectors = (rules.get("price_selector") or DEFAULT_RULES["price_selector"]).split(",")
+    url_selectors = (rules.get("url_selector") or DEFAULT_RULES["url_selector"]).split(",")
 
-    selectors = []
-    if rules and rules.get("category_link"):
-        selectors.append(rules["category_link"])
-    selectors.extend(
-        [
-            "nav a",
-            "ul a",
-            "header a",
-            "a[href*='catalog']",
-            "a[href*='category']",
-        ]
-    )
+    nodes = _validate_selector(parser, item_selector)
+    if not nodes:
+        raise ScraperError("No products found with provided selectors")
 
+    products: List[ParsedProduct] = []
+    for node in nodes:
+        name = _get_first_text(node, name_selectors)
+        if not name:
+            continue
+        price_text = _get_first_text(node, price_selectors)
+        price_value = _parse_price(price_text)
+        link = _find_link(node, url_selectors)
+        full_url = urljoin(base_url, link) if link else base_url
+        products.append(
+            ParsedProduct(
+                name=name,
+                url=full_url,
+                price=price_value,
+                raw_price=price_text or None,
+            )
+        )
+
+    if not products:
+        raise ScraperError("Products could not be parsed with current rules")
+    return products
+
+
+def parse_categories(html: str, base_url: str, rules: Dict[str, str]) -> List[Category]:
+    parser = HTMLParser(html)
+    selector = rules.get("category_link") or DEFAULT_RULES["category_link"]
     links: Dict[str, str] = {}
-    for selector in selectors:
-        for link in parser.css(selector):
+    for rule in selector.split(","):
+        candidates = _validate_selector(parser, rule.strip())
+        for link in candidates:
             href = link.attributes.get("href") or ""
             name = link.text().strip()
             if not href or len(name) < 3:
                 continue
-            full_url = urljoin(root_url, href)
+            full_url = urljoin(base_url, href)
             links[full_url] = name
         if links:
             break
@@ -93,37 +140,23 @@ async def discover_categories(root_url: str, rules: Dict[str, str] | None = None
     return [Category(name=value, url=key) for key, value in links.items()]
 
 
-async def scrape_category(category_url: str, rules: Dict[str, str]) -> List[ParsedProduct]:
-    html = await fetch_html(category_url)
-    parser = HTMLParser(html)
+async def scrape_products(url: str, rules: Dict[str, str]) -> List[ParsedProduct]:
+    html = await fetch_html(url)
+    return parse_products(html, url, rules)
 
-    item_selector = rules.get("product_item") or ".product, .product-card, .product-item"
-    name_selectors = rules.get("name_selector", ".product-title,.title,h2,h3").split(",")
-    price_selectors = rules.get("price_selector", ".price,.product-price").split(",")
-    url_selectors = rules.get("url_selector", "a").split(",")
 
-    products: List[ParsedProduct] = []
-    for node in parser.css(item_selector):
-        name = _get_first_text(node, name_selectors)
-        if not name:
-            continue
-        price_text = _get_first_text(node, price_selectors)
-        price_value = _parse_price(price_text)
-        link = _find_link(node, url_selectors)
-        full_url = urljoin(category_url, link) if link else category_url
-        products.append(
-            ParsedProduct(name=name, url=full_url, price=price_value, raw_price=price_text or None)
-        )
-
-    return products
+async def scrape_categories(url: str, rules: Dict[str, str]) -> List[Category]:
+    html = await fetch_html(url)
+    categories = parse_categories(html, url, rules)
+    return categories
 
 
 async def scrape_multiple_categories(category_urls: List[str], rules: Dict[str, str]) -> Dict[str, List[ParsedProduct]]:
     async def _scrape(url: str) -> tuple[str, List[ParsedProduct]]:
         try:
-            items = await scrape_category(url, rules)
+            items = await scrape_products(url, rules)
             return url, items
-        except Exception:
+        except ScraperError:
             return url, []
 
     tasks = [_scrape(url) for url in category_urls]

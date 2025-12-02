@@ -6,7 +6,6 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
-from urllib.parse import urlparse
 
 import pandas as pd
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
@@ -14,9 +13,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from parser_engine.fallback_logic import collect_categories_with_fallback, scrape_products_with_self_heal
 from parser_engine.matcher_ai import match_products_with_competitors
-from parser_engine.rule_detector_ai import DEFAULT_RULES, detect_rules_for_url
-from parser_engine.scraper import Category, discover_categories, scrape_category
+from parser_engine.rule_detector_ai import DEFAULT_RULES, generate_rules
 
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = BASE_DIR / "storage"
@@ -174,42 +173,6 @@ def load_competitor_products(competitor_id: str) -> Dict[str, Any]:
 # --- Category helpers ---
 
 
-def _find_or_create(nodes: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
-    for node in nodes:
-        if node.get("name") == name:
-            return node
-    new_node = {"name": name, "url": None, "children": []}
-    nodes.append(new_node)
-    return new_node
-
-
-def build_category_tree(categories: List[Category]) -> List[Dict[str, Any]]:
-    groups: Dict[str, Dict[str, Any]] = {}
-
-    for cat in categories:
-        parsed = urlparse(cat.url)
-        parts = [p for p in parsed.path.strip("/").split("/") if p]
-
-        if parts and parts[0] in {"ru", "ua", "uk"}:
-            parts = parts[1:]
-
-        group_key = parts[0] if parts else "Інше"
-        remaining_parts = parts[1:]
-
-        if group_key not in groups:
-            groups[group_key] = {"group_name": group_key, "items": []}
-
-        current_level = groups[group_key]["items"]
-
-        for part in remaining_parts:
-            current_node = _find_or_create(current_level, part)
-            current_level = current_node.setdefault("children", [])
-
-        current_level.append({"name": cat.name, "url": cat.url, "children": []})
-
-    return list(groups.values())
-
-
 # --- Routes ---
 
 
@@ -286,7 +249,7 @@ async def competitor_rules_page(request: Request, competitor_id: str) -> HTMLRes
 @app.post("/competitor/{competitor_id}/rules/detect")
 async def detect_rules(competitor_id: str) -> RedirectResponse:
     competitor = get_competitor(competitor_id)
-    rules = await detect_rules_for_url(competitor.get("root_url", ""))
+    rules = await generate_rules(competitor.get("root_url", ""))
     save_json_file(get_rules_path(competitor_id), rules)
     return RedirectResponse(url=f"/competitor/{competitor_id}/rules?detected=1", status_code=303)
 
@@ -306,11 +269,9 @@ async def save_rules(competitor_id: str, rules_body: str = Form(...)) -> Redirec
 async def competitor_parsing_page(request: Request, competitor_id: str, message: str | None = None) -> HTMLResponse:
     competitor = get_competitor(competitor_id)
     rules = load_competitor_rules(competitor_id)
-    try:
-        categories = await discover_categories(competitor.get("root_url", ""), rules)
-    except Exception:
-        categories = []
-    category_tree = build_category_tree(categories) if categories else []
+    category_groups = await collect_categories_with_fallback(
+        competitor.get("root_url", ""), rules
+    )
     existing = load_competitor_products(competitor_id)
     return templates.TemplateResponse(
         "competitor_parsing.html",
@@ -318,7 +279,7 @@ async def competitor_parsing_page(request: Request, competitor_id: str, message:
             "request": request,
             "competitor": competitor,
             "rules": rules,
-            "category_tree": category_tree,
+            "category_groups": category_groups,
             "existing": existing,
             "message": message,
             "active_tab": "competitors",
@@ -336,7 +297,13 @@ async def run_parsing(competitor_id: str, category_urls: List[str] | str = Form(
 
     products_by_category = {}
     for url in urls:
-        items = await scrape_category(url, rules)
+        items, rules = await scrape_products_with_self_heal(
+            url,
+            rules,
+            save_rules=lambda new_rules: save_json_file(
+                get_rules_path(competitor_id), new_rules
+            ),
+        )
         products_by_category[url] = [item.__dict__ for item in items]
 
     payload = {

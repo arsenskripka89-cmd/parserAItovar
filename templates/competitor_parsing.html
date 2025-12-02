@@ -52,7 +52,7 @@
     {% if message == 'parsed' %}
       <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg mb-3">Дані збережено.</div>
     {% endif %}
-    {% if not category_tree %}
+    {% if not category_groups %}
       <p class="text-sm text-gray-600">Не вдалося знайти категорії. Перевірте правила або URL.</p>
     {% else %}
     <form method="post" action="/competitor/{{ competitor.id }}/parsing" class="space-y-4">
@@ -61,7 +61,7 @@
         <button type="button" class="text-xs px-3 py-1 rounded bg-slate-100 hover:bg-slate-200" onclick="toggleAll(false)">Прибрати всі</button>
       </div>
       <div class="grid md:grid-cols-2 gap-3">
-        {% for group in category_tree %}
+        {% for group in category_groups %}
         <div class="mb-4 border border-slate-200 rounded-lg" data-node>
           <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-t-lg">
             <div class="font-semibold text-sm text-gray-800">{{ group.group_name }}</div>
