@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid gap-6">
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-xs text-gray-500">Крок 2</p>
+        <h2 class="text-lg font-semibold">AI побудова правил</h2>
+        <p class="text-sm text-gray-600">Конкурент: {{ competitor.name }} ({{ competitor.root_url }})</p>
+      </div>
+      <a href="/competitors" class="text-sm text-indigo-700 hover:underline">← до списку</a>
+    </div>
+    <form method="post" action="/competitor/{{ competitor.id }}/rules/detect" class="flex gap-3">
+      <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Згенерувати правила AI</button>
+      <a href="/competitor/{{ competitor.id }}/parsing" class="px-4 py-2 rounded-lg bg-slate-100 text-sm text-gray-800 hover:bg-slate-200">Перейти до парсингу</a>
+    </form>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Ручне редагування</h2>
+      <p class="text-xs text-gray-500">JSON правила</p>
+    </div>
+    <form method="post" action="/competitor/{{ competitor.id }}/rules">
+      <textarea name="rules_body" rows="14" class="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm">{{ rules }}</textarea>
+      <div class="flex justify-end mt-3">
+        <button type="submit" class="bg-emerald-600 text-white px-4 py-2 rounded-lg shadow hover:bg-emerald-700">Зберегти правила</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
