@@ -379,14 +379,20 @@ async def run_matching(competitor_ids: List[str] | str = Form(...)) -> RedirectR
     if not root_url:
         raise HTTPException(status_code=400, detail="Спочатку збережіть URL конкурента")
 
+    data = load_competitor_products(str(competitor.get("id", "")))
+    competitors = [competitor] if competitor else []
+    products_by_competitor: Dict[str, List[Dict[str, Any]]] = {}
+
     try:
         client = get_async_openai_client()
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
     matches: List[Dict[str, Any]] = []
 
     for product in products:
         prompt = prepare_match_prompt(root_url, product)
+
         try:
             completion = await client.chat.completions.create(
                 model="gpt-4.1-mini",
@@ -394,14 +400,20 @@ async def run_matching(competitor_ids: List[str] | str = Form(...)) -> RedirectR
                 messages=[
                     {
                         "role": "system",
-                        "content": "Ти допомагаєш знаходити відповідні товари на сайті конкурента. Відповідай у форматі JSON.",
+                        "content": "Ти допомагаєш знаходити відповідні товари конкурентів. Відповідай JSON.",
                     },
                     {"role": "user", "content": prompt},
                 ],
             )
+        except Exception as e:
+            print("AI match error:", e)
+            continue
+
         aggregated: List[Dict[str, Any]] = []
+
         for category in data.get("categories", []):
             aggregated.extend(category.get("items", []))
+
         products_by_competitor[str(competitor["id"])] = aggregated
 
     matches = match_products_with_competitors(products, competitors, products_by_competitor)
