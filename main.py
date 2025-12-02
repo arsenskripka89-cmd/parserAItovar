@@ -13,9 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from parser_engine.fallback_logic import collect_categories_with_fallback, scrape_products_with_self_heal
-from parser_engine.matcher_ai import match_products_with_competitors
-from parser_engine.rule_detector_ai import DEFAULT_RULES, generate_rules
+from config import get_async_openai_client
 
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = BASE_DIR / "storage"
@@ -376,16 +374,30 @@ async def run_matching(competitor_ids: List[str] | str = Form(...)) -> RedirectR
     if not products:
         raise HTTPException(status_code=400, detail="Спочатку завантажте товари")
 
-    ids = competitor_ids if isinstance(competitor_ids, list) else [competitor_ids]
-    competitors = [get_competitor(cid) for cid in ids]
-    products_by_competitor: Dict[str, List[Dict[str, Any]]] = {}
-    for competitor in competitors:
-        data = load_competitor_products(competitor["id"])
-        parsed_state = len(data.get("categories", [])) > 0
-        if not parsed_state:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Конкурента '{competitor['name']}' не розпарсено — спочатку запустіть парсинг у вкладці Конкуренти."
+    competitor = load_json_file(COMPETITOR_FILE, {})
+    root_url = competitor.get("root_url", "").strip()
+    if not root_url:
+        raise HTTPException(status_code=400, detail="Спочатку збережіть URL конкурента")
+
+    try:
+        client = get_async_openai_client()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    matches: List[Dict[str, Any]] = []
+
+    for product in products:
+        prompt = prepare_match_prompt(root_url, product)
+        try:
+            completion = await client.chat.completions.create(
+                model="gpt-4.1-mini",
+                temperature=0.2,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Ти допомагаєш знаходити відповідні товари на сайті конкурента. Відповідай у форматі JSON.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
             )
         aggregated: List[Dict[str, Any]] = []
         for category in data.get("categories", []):

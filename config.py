@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
-from openai import OpenAI
+from typing import Optional
+
+from openai import AsyncOpenAI, OpenAI
 
 CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
 
@@ -17,4 +19,12 @@ def get_openai_client():
     if not key:
         raise RuntimeError("OpenAI API key не встановлено")
 
-    return OpenAI(api_key=key)
+    api_key = _resolve_api_key()
+    return OpenAI(api_key=api_key)
+
+
+def get_async_openai_client() -> AsyncOpenAI:
+    """Return an initialized asynchronous OpenAI client using the configured API key."""
+
+    api_key = _resolve_api_key()
+    return AsyncOpenAI(api_key=api_key)
