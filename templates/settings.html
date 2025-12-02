@@ -29,7 +29,15 @@
           <div class="flex-1">
             <p class="text-sm font-semibold">{{ key.name }}</p>
             <p class="text-xs text-slate-500 break-all">{{ key.api_key }}</p>
+            {% if key.id == active_key_id %}
+              <span class="inline-flex items-center px-2 py-1 mt-1 text-xs rounded bg-emerald-50 text-emerald-700">Активний</span>
+            {% endif %}
           </div>
+          <form method="post" action="/settings" class="ml-auto flex items-center gap-2">
+            <input type="hidden" name="operation" value="activate_key" />
+            <input type="hidden" name="key_id" value="{{ key.id }}" />
+            <button type="submit" class="text-sm text-indigo-700 hover:underline" {% if key.id == active_key_id %}disabled{% endif %}>Зробити активним</button>
+          </form>
           <form method="post" action="/settings" class="ml-auto">
             <input type="hidden" name="operation" value="delete_key" />
             <input type="hidden" name="key_id" value="{{ key.id }}" />

@@ -9,7 +9,9 @@
       </div>
     </div>
     {% if request.query_params.get("uploaded") %}
-    <div class="bg-green-100 p-3 rounded text-green-700">Товари успішно завантажено</div>
+    <div class="bg-green-100 p-3 rounded text-green-700">Товари успішно завантажено у базу</div>
+    {% elif request.query_params.get("saved") %}
+    <div class="bg-green-100 p-3 rounded text-green-700">Базу товарів збережено</div>
     {% endif %}
     <form method="post" action="/products/upload" enctype="multipart/form-data" class="space-y-3">
       <label class="block text-sm font-medium text-gray-700">Завантажте CSV/XLSX з полями name, code, attributes_raw</label>
@@ -20,7 +22,13 @@
 
   <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold">{{ products|length }} товарів</h2>
+      <div>
+        <p class="text-xs text-gray-500">База товарів</p>
+        <h2 class="text-lg font-semibold">{{ products|length }} товарів</h2>
+      </div>
+      <form method="post" action="/products/save">
+        <button type="submit" class="bg-emerald-600 text-white px-4 py-2 rounded-lg shadow hover:bg-emerald-700 {% if not products %}opacity-50 cursor-not-allowed{% endif %}" {% if not products %}disabled{% endif %}>Зберегти базу</button>
+      </form>
     </div>
     {% if products %}
     <div class="overflow-x-auto">
@@ -36,7 +44,7 @@
           {% for product in products %}
           <tr>
             <td class="px-3 py-2 text-sm text-gray-600">{{ product.code }}</td>
-            <td class="px-3 py-2 text-sm text-gray-900">{{ product.name }}</td>
+            <td class="px-3 py-2 text-sm font-semibold text-indigo-700"><a href="/products/{{ product.code }}" class="hover:underline">{{ product.name }}</a></td>
             <td class="px-3 py-2 text-xs text-gray-500 whitespace-pre-line">{{ product.attributes_raw }}</td>
           </tr>
           {% endfor %}

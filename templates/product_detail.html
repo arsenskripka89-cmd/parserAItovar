@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid gap-6">
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-xs text-gray-500">Картка товару</p>
+        <h2 class="text-lg font-semibold">{{ product.name }}</h2>
+        <p class="text-sm text-gray-600">Код: {{ product.code }}</p>
+      </div>
+      <a href="/products" class="text-sm text-indigo-700 hover:underline">← до бази товарів</a>
+    </div>
+    <div class="grid md:grid-cols-2 gap-4 text-sm text-gray-800">
+      <div>
+        <p class="text-xs text-gray-500">Сирі характеристики</p>
+        <p class="whitespace-pre-line border border-slate-200 rounded-lg p-3 text-gray-700">{{ product.attributes_raw }}</p>
+      </div>
+      <div>
+        <p class="text-xs text-gray-500">Розпарсені характеристики</p>
+        {% if product.attributes_parsed %}
+        <div class="border border-slate-200 rounded-lg p-3 space-y-1">
+          {% for key, value in product.attributes_parsed.items() %}
+          <p><span class="text-slate-500">{{ key }}:</span> {{ value }}</p>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-600">Немає розпарсених характеристик.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Зіставлення з конкурентами</h2>
+      <p class="text-xs text-gray-500">{{ competitor_cards|length }} записів</p>
+    </div>
+    {% if competitor_cards %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <thead class="bg-slate-50">
+          <tr>
+            <th class="px-3 py-2 text-left font-semibold text-gray-600">Конкурент</th>
+            <th class="px-3 py-2 text-left font-semibold text-gray-600">URL</th>
+            <th class="px-3 py-2 text-left font-semibold text-gray-600">Категорія</th>
+            <th class="px-3 py-2 text-right font-semibold text-gray-600">Ціна</th>
+            <th class="px-3 py-2 text-right font-semibold text-gray-600">Наявність</th>
+            <th class="px-3 py-2 text-right font-semibold text-gray-600">Впевненість</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for row in competitor_cards %}
+          <tr>
+            <td class="px-3 py-2">
+              <p class="font-semibold text-gray-900">{{ row.name }}</p>
+              <p class="text-xs text-slate-500">ID {{ row.id }}</p>
+            </td>
+            <td class="px-3 py-2 text-indigo-700"><a href="{{ row.url }}" target="_blank" class="hover:underline break-all">{{ row.url }}</a></td>
+            <td class="px-3 py-2 text-xs text-gray-600 break-all">{{ row.category_url or '—' }}</td>
+            <td class="px-3 py-2 text-right">{{ row.price or '—' }}</td>
+            <td class="px-3 py-2 text-right">{% if row.available is none %}—{% elif row.available %}В наявності{% else %}Немає{% endif %}</td>
+            <td class="px-3 py-2 text-right font-semibold">{{ '%0.3f' % row.confidence if row.confidence is not none else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="text-sm text-gray-600">Для цього товару ще немає матчів. Запустіть matching.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
