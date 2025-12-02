@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
+from urllib.parse import urlparse
 
 import pandas as pd
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
@@ -170,6 +171,27 @@ def load_competitor_products(competitor_id: str) -> Dict[str, Any]:
     return load_json_file(get_products_path(competitor_id), {"categories": []})
 
 
+# --- Category helpers ---
+
+
+def group_categories(categories: List[Category]) -> List[Dict[str, Any]]:
+    groups: Dict[str, Dict[str, Any]] = {}
+    for cat in categories:
+        parsed = urlparse(cat.url)
+        parts = [p for p in parsed.path.strip("/").split("/") if p]
+
+        if parts and parts[0] in {"ru", "ua", "uk"}:
+            parts = parts[1:]
+
+        group_key = parts[0] if parts else "Інше"
+
+        if group_key not in groups:
+            groups[group_key] = {"group_name": group_key, "items": []}
+        groups[group_key]["items"].append(cat)
+
+    return list(groups.values())
+
+
 # --- Routes ---
 
 
@@ -270,6 +292,7 @@ async def competitor_parsing_page(request: Request, competitor_id: str, message:
         categories = await discover_categories(competitor.get("root_url", ""), rules)
     except Exception:
         categories = []
+    category_groups = group_categories(categories) if categories else []
     existing = load_competitor_products(competitor_id)
     return templates.TemplateResponse(
         "competitor_parsing.html",
@@ -277,7 +300,7 @@ async def competitor_parsing_page(request: Request, competitor_id: str, message:
             "request": request,
             "competitor": competitor,
             "rules": rules,
-            "categories": categories,
+            "category_groups": category_groups,
             "existing": existing,
             "message": message,
             "active_tab": "competitors",
