@@ -13,23 +13,55 @@
     {% if message == 'parsed' %}
       <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg mb-3">Дані збережено.</div>
     {% endif %}
-    {% if not categories %}
+    {% if not category_groups %}
       <p class="text-sm text-gray-600">Не вдалося знайти категорії. Перевірте правила або URL.</p>
     {% else %}
     <form method="post" action="/competitor/{{ competitor.id }}/parsing" class="space-y-4">
+      <div class="flex gap-2 mb-3">
+        <button type="button" class="text-xs px-3 py-1 rounded bg-slate-100 hover:bg-slate-200"
+                onclick="toggleAllCategories(true)">
+          Виділити всі
+        </button>
+        <button type="button" class="text-xs px-3 py-1 rounded bg-slate-100 hover:bg-slate-200"
+                onclick="toggleAllCategories(false)">
+          Прибрати всі
+        </button>
+      </div>
       <div class="grid md:grid-cols-2 gap-3">
-        {% for category in categories %}
-        <label class="flex items-start gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 hover:border-indigo-300">
-          <input type="checkbox" name="category_urls" value="{{ category.url }}" class="mt-1" checked />
-          <div>
-            <p class="text-sm font-medium text-gray-900">{{ category.name }}</p>
-            <p class="text-xs text-gray-600 break-all">{{ category.url }}</p>
+        {% for group in category_groups %}
+          <div class="mb-4 border border-slate-200 rounded-lg">
+            <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-t-lg">
+              <div class="font-semibold text-sm text-gray-800">
+                {{ group.group_name }}
+              </div>
+              <div class="flex gap-2">
+                <button type="button" class="text-xs text-indigo-600 hover:underline"
+                        onclick="toggleGroup('{{ group.group_name }}', true)">
+                  Увімкнути всі
+                </button>
+                <button type="button" class="text-xs text-rose-600 hover:underline"
+                        onclick="toggleGroup('{{ group.group_name }}', false)">
+                  Вимкнути всі
+                </button>
+              </div>
+            </div>
+            <div class="px-3 py-2 space-y-1">
+              {% for cat in group.items %}
+                <label class="flex items-center gap-2 text-sm text-gray-800">
+                  <input type="checkbox"
+                         name="category_urls"
+                         value="{{ cat.url }}"
+                         class="rounded group-{{ group.group_name|replace(' ', '_') }}">
+                  <span>{{ cat.name }}</span>
+                </label>
+              {% endfor %}
+            </div>
           </div>
-        </label>
         {% endfor %}
       </div>
       <div class="flex justify-end">
-        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Запустити парсинг</button>
+        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Запустити парсинг
+</button>
       </div>
     </form>
     {% endif %}
@@ -58,4 +90,16 @@
     {% endif %}
   </div>
 </section>
+<script>
+  function toggleAllCategories(value) {
+    const checkboxes = document.querySelectorAll('input[type="checkbox"][name="category_urls"]');
+    checkboxes.forEach(cb => cb.checked = value);
+  }
+
+  function toggleGroup(groupName, value) {
+    const cls = 'group-' + groupName.replace(/\s+/g, '_');
+    const checkboxes = document.querySelectorAll('input[type="checkbox"].' + cls);
+    checkboxes.forEach(cb => cb.checked = value);
+  }
+</script>
 {% endblock %}
