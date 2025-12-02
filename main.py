@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
 import pandas as pd
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -16,14 +18,41 @@ from config import get_async_openai_client
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = BASE_DIR / "storage"
 TEMPLATES_DIR = BASE_DIR / "templates"
-PRODUCTS_FILE = STORAGE_DIR / "products.json"
-COMPETITOR_FILE = STORAGE_DIR / "competitor.json"
-MATCH_FILE = STORAGE_DIR / "match.json"
 
-app = FastAPI(title="Product Importer")
+PRODUCTS_FILE = STORAGE_DIR / "products.json"
+COMPETITORS_FILE = STORAGE_DIR / "competitors.json"
+MATCH_FILE = STORAGE_DIR / "match.json"
+RULES_DIR = STORAGE_DIR / "competitor_rules"
+PRODUCTS_DIR = STORAGE_DIR / "competitor_products"
+
+app = FastAPI(title="Parser AI Tovar")
 app.mount("/storage", StaticFiles(directory=STORAGE_DIR), name="storage")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+
+def ensure_storage() -> None:
+    STORAGE_DIR.mkdir(exist_ok=True)
+    RULES_DIR.mkdir(parents=True, exist_ok=True)
+    PRODUCTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load_json_file(path: Path, default: Any) -> Any:
+    if not path.exists():
+        return default
+    try:
+        with path.open("r", encoding="utf-8") as file:
+            return json.load(file)
+    except json.JSONDecodeError:
+        return default
+
+
+def save_json_file(path: Path, payload: Any) -> None:
+    ensure_storage()
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, indent=2)
+
+
+# --- Products helpers ---
 
 def normalize_key(name: str) -> str:
     mapping = {
@@ -62,22 +91,6 @@ def parse_attributes(text: str | None) -> Dict[str, Any]:
     return attributes
 
 
-def load_json_file(path: Path, default: Any) -> Any:
-    if not path.exists():
-        return default
-    try:
-        with path.open("r", encoding="utf-8") as file:
-            return json.load(file)
-    except json.JSONDecodeError:
-        return default
-
-
-def save_json_file(path: Path, payload: Any) -> None:
-    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as file:
-        json.dump(payload, file, ensure_ascii=False, indent=2)
-
-
 def dataframe_to_products(df: pd.DataFrame) -> List[Dict[str, Any]]:
     required_columns = {"name", "code", "attributes_raw"}
     missing = required_columns - set(df.columns)
@@ -87,10 +100,26 @@ def dataframe_to_products(df: pd.DataFrame) -> List[Dict[str, Any]]:
             detail=f"Missing required columns: {', '.join(sorted(missing))}",
         )
 
+    # Налаштування довжини коду товару з конфігурації
+    config = load_json_file(BASE_DIR / "config.json", {})
+    try:
+        length = int(config.get("code_length", 6))
+        if length < 1:
+            length = 6
+    except Exception:
+        length = 6
+
     products: List[Dict[str, Any]] = []
     for _, row in df.iterrows():
         name = str(row.get("name", "")).strip()
-        code = str(row.get("code", "")).strip()
+        raw_code_value = row.get("code", "")
+        raw_code = "" if pd.isna(raw_code_value) else str(raw_code_value).strip()
+        raw_code = raw_code.split(".")[0]
+        # Якщо код має не тільки цифри — не застосовувати zfill
+        if raw_code.isdigit():
+            code = raw_code.zfill(length)
+        else:
+            code = raw_code
         raw_value = row.get("attributes_raw")
         attributes_raw = "" if pd.isna(raw_value) else str(raw_value).strip()
         attributes_parsed = parse_attributes(attributes_raw)
@@ -106,117 +135,241 @@ def dataframe_to_products(df: pd.DataFrame) -> List[Dict[str, Any]]:
     return products
 
 
-def save_products(products: List[Dict[str, Any]]) -> None:
-    save_json_file(PRODUCTS_FILE, products)
+# --- Competitors helpers ---
+
+def list_competitors() -> List[Dict[str, Any]]:
+    return load_json_file(COMPETITORS_FILE, [])
 
 
-def prepare_match_prompt(root_url: str, product: Dict[str, Any]) -> str:
-    attributes = product.get("attributes_parsed") or {}
-    attributes_text = json.dumps(attributes, ensure_ascii=False, indent=2)
-    return (
-        "Знайди на сайті конкурента {root_url} відповідний товар для:\n"
-        "Назва: {name}\n"
-        "Код: {code}\n"
-        "Характеристики: {attributes}\n"
-        "Поверни JSON з ключами competitor_url і confidence (0..1)."
-    ).format(root_url=root_url, name=product.get("name", ""), code=product.get("code", ""), attributes=attributes_text)
+def save_competitors(data: List[Dict[str, Any]]) -> None:
+    save_json_file(COMPETITORS_FILE, data)
 
 
-def parse_match_response(content: str) -> Dict[str, Any]:
+def get_competitor(competitor_id: str) -> Dict[str, Any]:
+    for item in list_competitors():
+        if str(item.get("id")) == str(competitor_id):
+            return item
+    raise HTTPException(status_code=404, detail="Конкурента не знайдено")
+
+
+def get_rules_path(competitor_id: str) -> Path:
+    return RULES_DIR / f"{competitor_id}.json"
+
+
+def get_products_path(competitor_id: str) -> Path:
+    return PRODUCTS_DIR / f"{competitor_id}.json"
+
+
+def load_competitor_rules(competitor_id: str) -> Dict[str, Any]:
+    return load_json_file(get_rules_path(competitor_id), DEFAULT_RULES)
+
+
+def load_competitor_products(competitor_id: str) -> Dict[str, Any]:
+    return load_json_file(get_products_path(competitor_id), {"categories": []})
+
+
+# --- Category helpers ---
+
+
+# --- Routes ---
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root() -> RedirectResponse:
+    return RedirectResponse(url="/competitors", status_code=303)
+
+
+@app.get("/competitors", response_class=HTMLResponse)
+async def competitors_page(request: Request, edit: str | None = None) -> HTMLResponse:
+    competitors = list_competitors()
+    edit_competitor = None
+    if edit:
+        for comp in competitors:
+            if str(comp.get("id")) == edit:
+                edit_competitor = comp
+                break
+    return templates.TemplateResponse(
+        "competitors.html",
+        {
+            "request": request,
+            "competitors": competitors,
+            "edit_competitor": edit_competitor,
+            "active_tab": "competitors",
+            "title": "Конкуренти",
+        },
+    )
+
+
+@app.post("/competitors")
+async def create_competitor(
+    name: str = Form(...),
+    root_url: str = Form(...),
+    competitor_id: str | None = Form(None),
+) -> RedirectResponse:
+    normalized_url = root_url.strip()
+    if not normalized_url:
+        raise HTTPException(status_code=400, detail="URL не може бути порожнім")
+
+    competitors = list_competitors()
+    if competitor_id:
+        updated = False
+        for item in competitors:
+            if str(item.get("id")) == competitor_id:
+                item["name"] = name.strip() or "Конкурент"
+                item["root_url"] = normalized_url
+                updated = True
+                break
+        if not updated:
+            raise HTTPException(status_code=404, detail="Конкурента не знайдено")
+    else:
+        competitors.append({"id": str(uuid.uuid4()), "name": name.strip() or "Конкурент", "root_url": normalized_url})
+
+    save_competitors(competitors)
+    return RedirectResponse(url="/competitors", status_code=303)
+
+
+@app.get("/competitor/{competitor_id}/rules", response_class=HTMLResponse)
+async def competitor_rules_page(request: Request, competitor_id: str) -> HTMLResponse:
+    competitor = get_competitor(competitor_id)
+    rules = load_competitor_rules(competitor_id)
+    return templates.TemplateResponse(
+        "competitor_rules.html",
+        {
+            "request": request,
+            "competitor": competitor,
+            "rules": json.dumps(rules, ensure_ascii=False, indent=2),
+            "active_tab": "competitors",
+            "title": "Правила парсингу",
+        },
+    )
+
+
+@app.post("/competitor/{competitor_id}/rules/detect")
+async def detect_rules(competitor_id: str) -> RedirectResponse:
+    competitor = get_competitor(competitor_id)
+    rules = await generate_rules(competitor.get("root_url", ""))
+    save_json_file(get_rules_path(competitor_id), rules)
+    return RedirectResponse(url=f"/competitor/{competitor_id}/rules?detected=1", status_code=303)
+
+
+@app.post("/competitor/{competitor_id}/rules")
+async def save_rules(competitor_id: str, rules_body: str = Form(...)) -> RedirectResponse:
     try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if not match:
-            return {"competitor_url": "", "confidence": 0.0}
-        try:
-            parsed = json.loads(match.group(0))
-        except json.JSONDecodeError:
-            return {"competitor_url": "", "confidence": 0.0}
+        parsed = json.loads(rules_body)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Помилка JSON: {exc}") from exc
 
-    try:
-        competitor_url = str(parsed.get("competitor_url", "")).strip()
-        confidence = float(parsed.get("confidence", 0))
-        return {"competitor_url": competitor_url, "confidence": confidence}
-    except (ValueError, TypeError):
-        return {"competitor_url": "", "confidence": 0.0}
+    save_json_file(get_rules_path(competitor_id), parsed)
+    return RedirectResponse(url=f"/competitor/{competitor_id}/rules?saved=1", status_code=303)
 
 
-@app.get("/")
-async def index(request: Request):
+@app.get("/competitor/{competitor_id}/parsing", response_class=HTMLResponse)
+async def competitor_parsing_page(request: Request, competitor_id: str, message: str | None = None) -> HTMLResponse:
+    competitor = get_competitor(competitor_id)
+    rules = load_competitor_rules(competitor_id)
+    category_groups = await collect_categories_with_fallback(
+        competitor.get("root_url", ""), rules
+    )
+    existing = load_competitor_products(competitor_id)
+    return templates.TemplateResponse(
+        "competitor_parsing.html",
+        {
+            "request": request,
+            "competitor": competitor,
+            "rules": rules,
+            "category_groups": category_groups,
+            "existing": existing,
+            "message": message,
+            "active_tab": "competitors",
+            "title": "Парсинг конкурента",
+        },
+    )
+
+
+@app.post("/competitor/{competitor_id}/parsing")
+async def run_parsing(competitor_id: str, category_urls: List[str] | str = Form(...)) -> RedirectResponse:
+    rules = load_competitor_rules(competitor_id)
+    urls = category_urls if isinstance(category_urls, list) else [category_urls]
+    if not urls:
+        raise HTTPException(status_code=400, detail="Оберіть хоча б одну категорію")
+
+    products_by_category = {}
+    for url in urls:
+        items, rules = await scrape_products_with_self_heal(
+            url,
+            rules,
+            save_rules=lambda new_rules: save_json_file(
+                get_rules_path(competitor_id), new_rules
+            ),
+        )
+        products_by_category[url] = [item.__dict__ for item in items]
+
+    payload = {
+        "categories": [
+            {"url": url, "items": products_by_category[url]} for url in urls
+        ],
+        "scraped_at": datetime.utcnow().isoformat() + "Z",
+    }
+    save_json_file(get_products_path(competitor_id), payload)
+    return RedirectResponse(url=f"/competitor/{competitor_id}/parsing?message=parsed", status_code=303)
+
+
+@app.get("/products", response_class=HTMLResponse)
+async def products_page(request: Request) -> HTMLResponse:
     products = load_json_file(PRODUCTS_FILE, [])
     return templates.TemplateResponse(
-        "index.html", {"request": request, "products": products, "active_tab": "upload", "title": "Завантаження"}
-    )
-
-
-@app.get("/match")
-async def match_page(request: Request):
-    competitor = load_json_file(COMPETITOR_FILE, {})
-    matches = load_json_file(MATCH_FILE, [])
-    return templates.TemplateResponse(
-        "match.html",
+        "products.html",
         {
             "request": request,
-            "competitor_root_url": competitor.get("root_url", ""),
-            "matches": matches,
-            "active_tab": "match",
-            "title": "Тест парсера",
+            "products": products,
+            "active_tab": "products",
+            "title": "Наші товари",
         },
     )
 
 
-@app.get("/competitor")
-async def competitor_page(request: Request):
-    competitor = load_json_file(COMPETITOR_FILE, {})
-    return templates.TemplateResponse(
-        "competitor.html",
-        {
-            "request": request,
-            "root_url": competitor.get("root_url", ""),
-            "active_tab": "competitor",
-            "title": "Конкурент",
-        },
-    )
-
-
-@app.post("/competitor")
-async def save_competitor(competitor_root_url: str = Form(...)):
-    normalized = competitor_root_url.strip()
-    if not normalized:
-        raise HTTPException(status_code=400, detail="URL конкурента не може бути порожнім")
-
-    save_json_file(COMPETITOR_FILE, {"root_url": normalized})
-    return RedirectResponse(url="/competitor?saved=1", status_code=303)
-
-
-@app.get("/products", response_class=JSONResponse)
-async def get_products() -> JSONResponse:
-    data = load_json_file(PRODUCTS_FILE, [])
-    return JSONResponse(content={"products": data})
-
-
-@app.post("/upload", response_class=JSONResponse)
-async def upload_file(file: UploadFile = File(...)) -> JSONResponse:
+@app.post("/products/upload")
+async def upload_products(file: UploadFile) -> RedirectResponse:
     filename = file.filename or ""
     suffix = Path(filename).suffix.lower()
-
     if suffix not in {".csv", ".xlsx"}:
-        raise HTTPException(status_code=400, detail="Only .csv and .xlsx files are supported")
+        raise HTTPException(status_code=400, detail="Підтримуються лише .csv або .xlsx")
 
     if suffix == ".csv":
-        df = pd.read_csv(file.file)
+        df = pd.read_csv(file.file, dtype=str)
     else:
-        df = pd.read_excel(file.file)
+        df = pd.read_excel(file.file, dtype=str)
 
     products = dataframe_to_products(df)
-    save_products([])
-    save_products(products)
-    return JSONResponse(content={"products": products})
+    save_json_file(PRODUCTS_FILE, products)
+    return RedirectResponse(url="/products?uploaded=1", status_code=303)
 
 
-@app.post("/match", response_class=JSONResponse)
-async def run_match() -> JSONResponse:
+@app.get("/matching", response_class=HTMLResponse)
+async def matching_page(request: Request) -> HTMLResponse:
+    competitors = list_competitors()
+    matches = load_json_file(MATCH_FILE, [])
+    products = load_json_file(PRODUCTS_FILE, [])
+    parsed_state: Dict[str, bool] = {}
+    for comp in competitors:
+        data = load_competitor_products(str(comp.get("id")))
+        parsed_state[str(comp.get("id"))] = len(data.get("categories", [])) > 0
+    return templates.TemplateResponse(
+        "matching.html",
+        {
+            "request": request,
+            "competitors": competitors,
+            "matches": matches,
+            "product_count": len(products),
+            "parsed_state": parsed_state,
+            "active_tab": "matching",
+            "title": "Матчинг товарів",
+        },
+    )
+
+
+@app.post("/matching")
+async def run_matching(competitor_ids: List[str] | str = Form(...)) -> RedirectResponse:
     products = load_json_file(PRODUCTS_FILE, [])
     if not products:
         raise HTTPException(status_code=400, detail="Спочатку завантажте товари")
@@ -246,42 +399,66 @@ async def run_match() -> JSONResponse:
                     {"role": "user", "content": prompt},
                 ],
             )
-            message_content = completion.choices[0].message.content or ""
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=500, detail=f"Помилка виклику моделі: {exc}") from exc
+        aggregated: List[Dict[str, Any]] = []
+        for category in data.get("categories", []):
+            aggregated.extend(category.get("items", []))
+        products_by_competitor[str(competitor["id"])] = aggregated
 
-        parsed = parse_match_response(message_content)
-        matches.append(
-            {
-                "our_code": product.get("code", ""),
-                "our_name": product.get("name", ""),
-                "competitor_url": parsed.get("competitor_url", ""),
-                "confidence": parsed.get("confidence", 0.0),
-            }
-        )
-
+    matches = match_products_with_competitors(products, competitors, products_by_competitor)
     save_json_file(MATCH_FILE, matches)
-    return JSONResponse(content={"matches": matches})
+    return RedirectResponse(url="/matching?ready=1", status_code=303)
 
 
-@app.get("/match/data", response_class=JSONResponse)
-async def get_match_data() -> JSONResponse:
-    matches = load_json_file(MATCH_FILE, [])
-    return JSONResponse(content={"matches": matches})
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request) -> HTMLResponse:
+    config = load_json_file(BASE_DIR / "config.json", {})
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "openai_keys": config.get("openai_keys", []),
+            "code_length": config.get("code_length", 6),
+            "active_tab": "settings",
+            "title": "Налаштування",
+        },
+    )
 
 
-@app.post("/match/update", response_class=JSONResponse)
-async def update_match(our_code: str = Form(...), competitor_url: str = Form(...)) -> JSONResponse:
-    matches = load_json_file(MATCH_FILE, [])
-    updated = False
-    for item in matches:
-        if item.get("our_code") == our_code:
-            item["competitor_url"] = competitor_url.strip()
-            updated = True
-            break
+@app.post("/settings")
+async def save_settings(
+    operation: str = Form("save"),
+    code_length: str | None = Form(None),
+    key_name: str = Form(""),
+    api_key: str = Form(""),
+    key_id: str = Form(""),
+) -> RedirectResponse:
+    config = load_json_file(BASE_DIR / "config.json", {"openai_keys": [], "code_length": 6})
+    openai_keys = config.get("openai_keys", [])
 
-    if not updated:
-        raise HTTPException(status_code=404, detail="Запис не знайдено")
+    if operation == "add_key":
+        cleaned_key = api_key.strip()
+        if cleaned_key:
+            openai_keys.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "name": key_name.strip() or "OpenAI ключ",
+                    "api_key": cleaned_key,
+                }
+            )
+    elif operation == "delete_key":
+        openai_keys = [k for k in openai_keys if str(k.get("id")) != key_id]
 
-    save_json_file(MATCH_FILE, matches)
-    return JSONResponse(content={"matches": matches})
+    try:
+        code_length_value = int(code_length) if code_length is not None else int(config.get("code_length", 6))
+    except Exception:
+        code_length_value = int(config.get("code_length", 6))
+
+    if code_length_value < 1:
+        code_length_value = 1
+
+    payload = {"openai_keys": openai_keys, "code_length": code_length_value}
+    save_json_file(BASE_DIR / "config.json", payload)
+    return RedirectResponse(url="/settings?saved=1", status_code=303)
+
+
+ensure_storage()

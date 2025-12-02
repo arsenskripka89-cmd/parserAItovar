@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid gap-6">
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-xs text-gray-500">Крок 1</p>
+        <h2 class="text-lg font-semibold">Додайте конкурентів</h2>
+      </div>
+    </div>
+    <form method="post" action="/competitors" class="grid md:grid-cols-3 gap-4">
+      <input type="hidden" name="competitor_id" value="{{ edit_competitor.id if edit_competitor else '' }}" />
+      <div class="md:col-span-1">
+        <label class="block text-sm font-medium text-gray-700">Назва</label>
+        <input name="name" value="{{ edit_competitor.name if edit_competitor else '' }}" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Назва конкурента" />
+      </div>
+      <div class="md:col-span-2">
+        <label class="block text-sm font-medium text-gray-700">Root URL</label>
+        <input name="root_url" value="{{ edit_competitor.root_url if edit_competitor else '' }}" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="https://example.com" />
+      </div>
+      <div class="md:col-span-3 flex justify-end">
+        <div class="flex gap-2">
+          {% if edit_competitor %}
+          <a href="/competitors" class="px-4 py-2 rounded-lg bg-slate-100 text-gray-700 hover:bg-slate-200">Скасувати</a>
+          {% endif %}
+          <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">{{ 'Оновити' if edit_competitor else 'Зберегти' }}</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-xs text-gray-500">Крок 2</p>
+        <h2 class="text-lg font-semibold">Конкуренти</h2>
+      </div>
+    </div>
+    {% if competitors %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate-200">
+        <thead class="bg-slate-50">
+          <tr>
+            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Назва</th>
+            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Root URL</th>
+            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Дії</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for competitor in competitors %}
+          <tr>
+            <td class="px-3 py-2 text-sm font-medium text-gray-900">{{ competitor.name }}</td>
+            <td class="px-3 py-2 text-sm text-indigo-700"><a href="{{ competitor.root_url }}" target="_blank" class="hover:underline">{{ competitor.root_url }}</a></td>
+            <td class="px-3 py-2 text-sm text-right flex gap-2 justify-end">
+              <a href="/competitors?edit={{ competitor.id }}" class="px-3 py-1 bg-slate-50 rounded-lg text-sm text-gray-700 hover:bg-slate-100">Редагувати</a>
+              <a href="/competitor/{{ competitor.id }}/rules" class="px-3 py-1 bg-slate-100 rounded-lg text-sm text-gray-700 hover:bg-slate-200">Правила</a>
+              <a href="/competitor/{{ competitor.id }}/parsing" class="px-3 py-1 bg-indigo-100 rounded-lg text-sm text-indigo-800 hover:bg-indigo-200">Парсинг</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="text-sm text-gray-600">Додайте хоча б одного конкурента, щоб запустити AI визначення правил та парсинг.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

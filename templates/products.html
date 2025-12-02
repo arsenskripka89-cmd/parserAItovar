@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid gap-6">
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-xs text-gray-500">Початкові дані</p>
+        <h2 class="text-lg font-semibold">Наші товари</h2>
+      </div>
+    </div>
+    {% if request.query_params.get("uploaded") %}
+    <div class="bg-green-100 p-3 rounded text-green-700">Товари успішно завантажено</div>
+    {% endif %}
+    <form method="post" action="/products/upload" enctype="multipart/form-data" class="space-y-3">
+      <label class="block text-sm font-medium text-gray-700">Завантажте CSV/XLSX з полями name, code, attributes_raw</label>
+      <input type="file" name="file" accept=".csv,.xlsx" required class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+      <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Завантажити</button>
+    </form>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">{{ products|length }} товарів</h2>
+    </div>
+    {% if products %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate-200">
+        <thead class="bg-slate-50">
+          <tr>
+            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Код</th>
+            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Назва</th>
+            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Характеристики</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for product in products %}
+          <tr>
+            <td class="px-3 py-2 text-sm text-gray-600">{{ product.code }}</td>
+            <td class="px-3 py-2 text-sm text-gray-900">{{ product.name }}</td>
+            <td class="px-3 py-2 text-xs text-gray-500 whitespace-pre-line">{{ product.attributes_raw }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="text-sm text-gray-600">Додайте товари для подальшого матчингу.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

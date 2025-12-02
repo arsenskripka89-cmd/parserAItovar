@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid gap-6">
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-xs text-gray-500">Крок 4</p>
+        <h2 class="text-lg font-semibold">AI Matching товарів</h2>
+        <p class="text-sm text-gray-600">Наших товарів: {{ product_count }}</p>
+      </div>
+    </div>
+    {% set any_ready = false %}
+    {% for cid, state in parsed_state.items() %}
+        {% if state %}
+            {% set any_ready = true %}
+        {% endif %}
+    {% endfor %}
+
+    {% if not any_ready %}
+    <div class="bg-yellow-100 text-yellow-800 p-3 rounded-lg mb-4">
+      Немає жодного конкурента з розпарсеними товарами.
+      Перейдіть у розділ “Конкуренти”, оберіть конкурента і запустіть парсинг категорій.
+    </div>
+    {% endif %}
+    <form method="post" action="/matching" class="space-y-3">
+      <p class="text-sm text-gray-700">Оберіть конкурентів для матчінгу</p>
+      <div class="grid md:grid-cols-2 gap-2">
+        {% for competitor in competitors %}
+        <label class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          <input type="checkbox" name="competitor_ids" value="{{ competitor.id }}" class="rounded" {% if loop.first and parsed_state[competitor.id|string] %}checked{% endif %} {% if not parsed_state[competitor.id|string] %}disabled{% endif %} />
+          <span class="text-sm text-gray-800">{{ competitor.name }}</span>
+          {% if not parsed_state[competitor.id|string] %}
+          <p class="text-red-500 text-sm">⚠ Конкурента не розпарсено — matching недоступний</p>
+          {% endif %}
+        </label>
+        {% endfor %}
+      </div>
+      <div class="flex justify-end">
+        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Запустити matching</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Результати</h2>
+      <p class="text-xs text-gray-500">{{ matches|length }} записів</p>
+    </div>
+    {% if matches %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate-200">
+        <thead class="bg-slate-50">
+          <tr>
+            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Наш товар</th>
+            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Конкурент</th>
+            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">URL</th>
+            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Ціна</th>
+            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Впевненість</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for row in matches %}
+          <tr>
+            <td class="px-3 py-2 text-sm">
+              <p class="font-medium text-gray-900">{{ row.our_name }}</p>
+              <p class="text-xs text-gray-500">{{ row.our_code }}</p>
+            </td>
+            <td class="px-3 py-2 text-sm">
+              <p class="font-medium text-gray-900">{{ row.competitor_name }}</p>
+              <p class="text-xs text-gray-500">ID {{ row.competitor_id }}</p>
+            </td>
+            <td class="px-3 py-2 text-sm text-indigo-700"><a href="{{ row.competitor_url }}" target="_blank" class="hover:underline break-all">{{ row.competitor_url }}</a></td>
+            <td class="px-3 py-2 text-sm text-right">{{ row.competitor_price or '—' }}</td>
+            <td class="px-3 py-2 text-sm text-right font-semibold">{{ '%0.3f' % row.confidence }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="text-sm text-gray-600">Запустіть matching після парсингу.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
