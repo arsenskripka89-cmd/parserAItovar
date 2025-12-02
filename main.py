@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from config import get_openai_client
+from config import get_async_openai_client
 
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = BASE_DIR / "storage"
@@ -227,7 +227,7 @@ async def run_match() -> JSONResponse:
         raise HTTPException(status_code=400, detail="Спочатку збережіть URL конкурента")
 
     try:
-        client = get_openai_client()
+        client = get_async_openai_client()
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     matches: List[Dict[str, Any]] = []
@@ -235,7 +235,7 @@ async def run_match() -> JSONResponse:
     for product in products:
         prompt = prepare_match_prompt(root_url, product)
         try:
-            completion = client.chat.completions.create(
+            completion = await client.chat.completions.create(
                 model="gpt-4.1-mini",
                 temperature=0.2,
                 messages=[
