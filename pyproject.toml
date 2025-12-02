@@ -19,6 +19,5 @@ dependencies = [
     "selectolax>=0.3",
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["parserai"]
+[tool.poetry]
+package-mode = false

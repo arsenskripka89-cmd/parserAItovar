@@ -20,8 +20,23 @@ def _find_or_create(nodes: List[Dict[str, object]], name: str) -> Dict[str, obje
 def build_category_groups(categories: List[Category]) -> List[Dict[str, object]]:
     groups: Dict[str, Dict[str, object]] = {}
 
-    for cat in categories:
-        parsed = urlparse(cat.url)
+    for cat in categories or []:
+        if cat is None:
+            continue
+
+        cat_data = (
+            cat
+            if isinstance(cat, dict)
+            else {"name": getattr(cat, "name", None), "url": getattr(cat, "url", None)}
+        )
+
+        url = str(cat_data.get("url", "") or "").strip()
+        name = str(cat_data.get("name", "") or "").strip()
+
+        if not url or not name:
+            continue
+
+        parsed = urlparse(url)
         parts = [p for p in parsed.path.strip("/").split("/") if p]
 
         if parts and parts[0] in {"ru", "ua", "uk"}:
@@ -38,20 +53,23 @@ def build_category_groups(categories: List[Category]) -> List[Dict[str, object]]
         for part in remaining_parts:
             current_node = _find_or_create(current_level, part)
             current_level = current_node.setdefault("children", [])  # type: ignore[assignment]
+        current_level.append({"name": name, "url": url, "children": []})
 
-        current_level.append({"name": cat.name, "url": cat.url, "children": []})
-
-    return list(groups.values())
+    return sorted(groups.values(), key=lambda item: str(item.get("group_name", "")))
 
 
 async def collect_categories_with_fallback(root_url: str, rules: Dict[str, str]) -> List[Dict[str, object]]:
+    categories: List[Category] | None = None
     try:
         categories = await scrape_categories(root_url, rules)
+    except ScraperError:
+        categories = []
+
+    groups: List[Dict[str, object]] = []
+    if categories:
         groups = build_category_groups(categories)
         if groups:
             return groups
-    except ScraperError:
-        pass
 
     html = await fetch_html(root_url)
     ai_groups = category_ai.detect_category_tree(html)

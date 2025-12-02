@@ -45,7 +45,7 @@
       <div>
         <p class="text-xs text-gray-500">Крок 3</p>
         <h2 class="text-lg font-semibold">Парсинг конкурента</h2>
-        <p class="text-sm text-gray-600">{{ competitor.name }} · {{ competitor.root_url }}</p>
+        <p class="text-sm text-gray-600">{{ competitor["name"] }} · {{ competitor["root_url"] }}</p>
       </div>
       <a href="/competitors" class="text-sm text-indigo-700 hover:underline">← до списку</a>
     </div>
@@ -55,7 +55,7 @@
     {% if not category_groups %}
       <p class="text-sm text-gray-600">Не вдалося знайти категорії. Перевірте правила або URL.</p>
     {% else %}
-    <form method="post" action="/competitor/{{ competitor.id }}/parsing" class="space-y-4">
+    <form method="post" action="/competitor/{{ competitor["id"] }}/parsing" class="space-y-4">
       <div class="flex gap-2 mb-3">
         <button type="button" class="text-xs px-3 py-1 rounded bg-slate-100 hover:bg-slate-200" onclick="toggleAll(true)">Виділити всі</button>
         <button type="button" class="text-xs px-3 py-1 rounded bg-slate-100 hover:bg-slate-200" onclick="toggleAll(false)">Прибрати всі</button>
@@ -90,17 +90,17 @@
   <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold">Збережені товари</h2>
-      {% if existing.scraped_at %}
-      <p class="text-xs text-gray-500">Оновлено {{ existing.scraped_at }}</p>
+      {% if existing.get("scraped_at") %}
+      <p class="text-xs text-gray-500">Оновлено {{ existing["scraped_at"] }}</p>
       {% endif %}
     </div>
-    {% if existing.categories %}
+    {% if existing.get("categories") %}
     <div class="space-y-3">
-      {% for category in existing.categories %}
+      {% for category in existing["categories"] %}
       <div class="border border-slate-200 rounded-lg p-3">
         <div class="flex justify-between items-center">
-          <p class="text-sm font-semibold">{{ category.url }}</p>
-          <span class="text-xs text-gray-500">{{ category.items|length }} товарів</span>
+          <p class="text-sm font-semibold">{{ category["url"] }}</p>
+          <span class="text-xs text-gray-500">{{ category["items"]|length }} товарів</span>
         </div>
       </div>
       {% endfor %}
