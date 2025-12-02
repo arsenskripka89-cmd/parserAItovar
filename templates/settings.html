@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-  <div class="flex items-center justify-between mb-4">
+<section class="bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-6">
+  <div class="flex items-center justify-between mb-2">
     <div>
-      <p class="text-xs text-gray-500">API ключ</p>
+      <p class="text-xs text-gray-500">API ключі</p>
       <h2 class="text-lg font-semibold">Налаштування OpenAI</h2>
     </div>
   </div>
@@ -12,12 +12,48 @@
     Налаштування успішно збережено.
   </div>
   {% endif %}
+
   <form method="post" action="/settings" class="space-y-3">
-    <label class="block text-sm font-medium text-gray-700">OpenAI API key</label>
-    <input name="api_key" value="{{ api_key }}" class="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="sk-..." />
+    <input type="hidden" name="operation" value="save" />
     <label class="block text-sm font-medium text-gray-700">Довжина коду товару</label>
     <input name="code_length" value="{{ code_length }}" type="number" min="1" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
-    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Зберегти</button>
+    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Зберегти довжину коду</button>
+  </form>
+
+  <div class="space-y-3">
+    <h3 class="text-md font-semibold">OpenAI ключі</h3>
+    {% if openai_keys %}
+      <div class="space-y-2">
+        {% for key in openai_keys %}
+        <div class="flex items-start gap-3 border border-slate-200 rounded-lg p-3">
+          <div class="flex-1">
+            <p class="text-sm font-semibold">{{ key.name }}</p>
+            <p class="text-xs text-slate-500 break-all">{{ key.api_key }}</p>
+          </div>
+          <form method="post" action="/settings" class="ml-auto">
+            <input type="hidden" name="operation" value="delete_key" />
+            <input type="hidden" name="key_id" value="{{ key.id }}" />
+            <button type="submit" class="text-sm text-rose-600 hover:underline">Видалити</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-sm text-gray-600">Ключі відсутні. Додайте хоча б один API ключ.</p>
+    {% endif %}
+  </div>
+
+  <form method="post" action="/settings" class="space-y-3">
+    <input type="hidden" name="operation" value="add_key" />
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Назва ключа</label>
+      <input name="key_name" class="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Основний ключ" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">OpenAI API key</label>
+      <input name="api_key" class="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="sk-..." />
+    </div>
+    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Додати ключ</button>
   </form>
 </section>
 {% endblock %}

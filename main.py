@@ -174,8 +174,18 @@ def load_competitor_products(competitor_id: str) -> Dict[str, Any]:
 # --- Category helpers ---
 
 
-def group_categories(categories: List[Category]) -> List[Dict[str, Any]]:
+def _find_or_create(nodes: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
+    for node in nodes:
+        if node.get("name") == name:
+            return node
+    new_node = {"name": name, "url": None, "children": []}
+    nodes.append(new_node)
+    return new_node
+
+
+def build_category_tree(categories: List[Category]) -> List[Dict[str, Any]]:
     groups: Dict[str, Dict[str, Any]] = {}
+
     for cat in categories:
         parsed = urlparse(cat.url)
         parts = [p for p in parsed.path.strip("/").split("/") if p]
@@ -184,10 +194,18 @@ def group_categories(categories: List[Category]) -> List[Dict[str, Any]]:
             parts = parts[1:]
 
         group_key = parts[0] if parts else "Інше"
+        remaining_parts = parts[1:]
 
         if group_key not in groups:
             groups[group_key] = {"group_name": group_key, "items": []}
-        groups[group_key]["items"].append(cat)
+
+        current_level = groups[group_key]["items"]
+
+        for part in remaining_parts:
+            current_node = _find_or_create(current_level, part)
+            current_level = current_node.setdefault("children", [])
+
+        current_level.append({"name": cat.name, "url": cat.url, "children": []})
 
     return list(groups.values())
 
@@ -292,7 +310,7 @@ async def competitor_parsing_page(request: Request, competitor_id: str, message:
         categories = await discover_categories(competitor.get("root_url", ""), rules)
     except Exception:
         categories = []
-    category_groups = group_categories(categories) if categories else []
+    category_tree = build_category_tree(categories) if categories else []
     existing = load_competitor_products(competitor_id)
     return templates.TemplateResponse(
         "competitor_parsing.html",
@@ -300,7 +318,7 @@ async def competitor_parsing_page(request: Request, competitor_id: str, message:
             "request": request,
             "competitor": competitor,
             "rules": rules,
-            "category_groups": category_groups,
+            "category_tree": category_tree,
             "existing": existing,
             "message": message,
             "active_tab": "competitors",
@@ -419,7 +437,7 @@ async def settings_page(request: Request) -> HTMLResponse:
         "settings.html",
         {
             "request": request,
-            "api_key": config.get("openai_api_key", ""),
+            "openai_keys": config.get("openai_keys", []),
             "code_length": config.get("code_length", 6),
             "active_tab": "settings",
             "title": "Налаштування",
@@ -428,8 +446,38 @@ async def settings_page(request: Request) -> HTMLResponse:
 
 
 @app.post("/settings")
-async def save_settings(api_key: str = Form(""), code_length: str = Form("6")) -> RedirectResponse:
-    payload = {"openai_api_key": api_key.strip(), "code_length": int(code_length)}
+async def save_settings(
+    operation: str = Form("save"),
+    code_length: str | None = Form(None),
+    key_name: str = Form(""),
+    api_key: str = Form(""),
+    key_id: str = Form(""),
+) -> RedirectResponse:
+    config = load_json_file(BASE_DIR / "config.json", {"openai_keys": [], "code_length": 6})
+    openai_keys = config.get("openai_keys", [])
+
+    if operation == "add_key":
+        cleaned_key = api_key.strip()
+        if cleaned_key:
+            openai_keys.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "name": key_name.strip() or "OpenAI ключ",
+                    "api_key": cleaned_key,
+                }
+            )
+    elif operation == "delete_key":
+        openai_keys = [k for k in openai_keys if str(k.get("id")) != key_id]
+
+    try:
+        code_length_value = int(code_length) if code_length is not None else int(config.get("code_length", 6))
+    except Exception:
+        code_length_value = int(config.get("code_length", 6))
+
+    if code_length_value < 1:
+        code_length_value = 1
+
+    payload = {"openai_keys": openai_keys, "code_length": code_length_value}
     save_json_file(BASE_DIR / "config.json", payload)
     return RedirectResponse(url="/settings?saved=1", status_code=303)
 
