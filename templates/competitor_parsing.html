@@ -3,7 +3,7 @@
 {% macro render_category(cat) %}
 <li class="border border-slate-200 rounded-lg p-2" data-node>
   <div class="flex items-center gap-2 text-sm text-gray-800">
-    {% if cat.children %}
+    {% if cat["children"] %}
     <button type="button" class="w-6 h-6 flex items-center justify-center text-xs text-gray-600 border border-slate-200 rounded" onclick="toggleNode(this)" aria-expanded="true">
       ▼
     </button>
@@ -11,18 +11,18 @@
     <span class="w-6"></span>
     {% endif %}
 
-    {% if cat.url %}
-    <input type="checkbox" name="category_urls" value="{{ cat.url }}" class="rounded" onchange="toggleChildCheckboxes(this)">
+    {% if cat["url"] %}
+    <input type="checkbox" name="category_urls" value="{{ cat["url"] }}" class="rounded" onchange="toggleChildCheckboxes(this)">
     {% else %}
     <span class="w-4"></span>
     {% endif %}
 
-    <span class="font-medium">{{ cat.name }}</span>
-    {% if cat.url %}
-    <span class="text-xs text-slate-500 break-all">{{ cat.url }}</span>
+    <span class="font-medium">{{ cat["name"] }}</span>
+    {% if cat["url"] %}
+    <span class="text-xs text-slate-500 break-all">{{ cat["url"] }}</span>
     {% endif %}
 
-    {% if cat.children %}
+    {% if cat["children"] %}
     <div class="flex gap-2 items-center text-xs ml-auto">
       <button type="button" class="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200" onclick="setSubtree(this, true)">Увімкнути всі підкатегорії</button>
       <button type="button" class="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200" onclick="setSubtree(this, false)">Вимкнути всі підкатегорії</button>
@@ -30,9 +30,9 @@
     {% endif %}
   </div>
 
-  {% if cat.children %}
+  {% if cat["children"] %}
   <ul class="children mt-2 pl-5 space-y-2 border-l border-slate-200">
-    {% for child in cat.children %}
+    {% for child in cat["children"] %}
       {{ render_category(child) }}
     {% endfor %}
   </ul>
@@ -64,7 +64,7 @@
         {% for group in category_groups %}
         <div class="mb-4 border border-slate-200 rounded-lg" data-node>
           <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-t-lg">
-            <div class="font-semibold text-sm text-gray-800">{{ group.group_name }}</div>
+            <div class="font-semibold text-sm text-gray-800">{{ group["group_name"] }}</div>
             <div class="flex gap-2 text-xs">
               <button type="button" class="text-indigo-600 hover:underline" onclick="setSubtree(this, true)">Увімкнути всі підкатегорії</button>
               <button type="button" class="text-rose-600 hover:underline" onclick="setSubtree(this, false)">Вимкнути всі підкатегорії</button>
