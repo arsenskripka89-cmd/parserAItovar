@@ -1,5 +1,44 @@
 {% extends "base.html" %}
 {% block content %}
+{% macro render_category(cat) %}
+<li class="border border-slate-200 rounded-lg p-2" data-node>
+  <div class="flex items-center gap-2 text-sm text-gray-800">
+    {% if cat.children %}
+    <button type="button" class="w-6 h-6 flex items-center justify-center text-xs text-gray-600 border border-slate-200 rounded" onclick="toggleNode(this)" aria-expanded="true">
+      ▼
+    </button>
+    {% else %}
+    <span class="w-6"></span>
+    {% endif %}
+
+    {% if cat.url %}
+    <input type="checkbox" name="category_urls" value="{{ cat.url }}" class="rounded" onchange="toggleChildCheckboxes(this)">
+    {% else %}
+    <span class="w-4"></span>
+    {% endif %}
+
+    <span class="font-medium">{{ cat.name }}</span>
+    {% if cat.url %}
+    <span class="text-xs text-slate-500 break-all">{{ cat.url }}</span>
+    {% endif %}
+
+    {% if cat.children %}
+    <div class="flex gap-2 items-center text-xs ml-auto">
+      <button type="button" class="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200" onclick="setSubtree(this, true)">Увімкнути всі підкатегорії</button>
+      <button type="button" class="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200" onclick="setSubtree(this, false)">Вимкнути всі підкатегорії</button>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if cat.children %}
+  <ul class="children mt-2 pl-5 space-y-2 border-l border-slate-200">
+    {% for child in cat.children %}
+      {{ render_category(child) }}
+    {% endfor %}
+  </ul>
+  {% endif %}
+</li>
+{% endmacro %}
 <section class="grid gap-6">
   <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
     <div class="flex items-center justify-between mb-4">
@@ -13,55 +52,36 @@
     {% if message == 'parsed' %}
       <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg mb-3">Дані збережено.</div>
     {% endif %}
-    {% if not category_groups %}
+    {% if not category_tree %}
       <p class="text-sm text-gray-600">Не вдалося знайти категорії. Перевірте правила або URL.</p>
     {% else %}
     <form method="post" action="/competitor/{{ competitor.id }}/parsing" class="space-y-4">
       <div class="flex gap-2 mb-3">
-        <button type="button" class="text-xs px-3 py-1 rounded bg-slate-100 hover:bg-slate-200"
-                onclick="toggleAllCategories(true)">
-          Виділити всі
-        </button>
-        <button type="button" class="text-xs px-3 py-1 rounded bg-slate-100 hover:bg-slate-200"
-                onclick="toggleAllCategories(false)">
-          Прибрати всі
-        </button>
+        <button type="button" class="text-xs px-3 py-1 rounded bg-slate-100 hover:bg-slate-200" onclick="toggleAll(true)">Виділити всі</button>
+        <button type="button" class="text-xs px-3 py-1 rounded bg-slate-100 hover:bg-slate-200" onclick="toggleAll(false)">Прибрати всі</button>
       </div>
       <div class="grid md:grid-cols-2 gap-3">
-        {% for group in category_groups %}
-          <div class="mb-4 border border-slate-200 rounded-lg">
-            <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-t-lg">
-              <div class="font-semibold text-sm text-gray-800">
-                {{ group.group_name }}
-              </div>
-              <div class="flex gap-2">
-                <button type="button" class="text-xs text-indigo-600 hover:underline"
-                        onclick="toggleGroup('{{ group.group_name }}', true)">
-                  Увімкнути всі
-                </button>
-                <button type="button" class="text-xs text-rose-600 hover:underline"
-                        onclick="toggleGroup('{{ group.group_name }}', false)">
-                  Вимкнути всі
-                </button>
-              </div>
-            </div>
-            <div class="px-3 py-2 space-y-1">
-              {% for cat in group.items %}
-                <label class="flex items-center gap-2 text-sm text-gray-800">
-                  <input type="checkbox"
-                         name="category_urls"
-                         value="{{ cat.url }}"
-                         class="rounded group-{{ group.group_name|replace(' ', '_') }}">
-                  <span>{{ cat.name }}</span>
-                </label>
-              {% endfor %}
+        {% for group in category_tree %}
+        <div class="mb-4 border border-slate-200 rounded-lg" data-node>
+          <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-t-lg">
+            <div class="font-semibold text-sm text-gray-800">{{ group.group_name }}</div>
+            <div class="flex gap-2 text-xs">
+              <button type="button" class="text-indigo-600 hover:underline" onclick="setSubtree(this, true)">Увімкнути всі підкатегорії</button>
+              <button type="button" class="text-rose-600 hover:underline" onclick="setSubtree(this, false)">Вимкнути всі підкатегорії</button>
             </div>
           </div>
+          <div class="px-3 py-2">
+            <ul class="space-y-2">
+              {% for cat in group.items %}
+                {{ render_category(cat) }}
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
         {% endfor %}
       </div>
       <div class="flex justify-end">
-        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Запустити парсинг
-</button>
+        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700">Запустити парсинг</button>
       </div>
     </form>
     {% endif %}
@@ -91,14 +111,37 @@
   </div>
 </section>
 <script>
-  function toggleAllCategories(value) {
+  function toggleAll(value) {
     const checkboxes = document.querySelectorAll('input[type="checkbox"][name="category_urls"]');
     checkboxes.forEach(cb => cb.checked = value);
   }
 
-  function toggleGroup(groupName, value) {
-    const cls = 'group-' + groupName.replace(/\s+/g, '_');
-    const checkboxes = document.querySelectorAll('input[type="checkbox"].' + cls);
+  function toggleNode(button) {
+    const node = button.closest('[data-node]');
+    if (!node) return;
+    const children = node.querySelector(':scope > .children');
+    if (!children) return;
+    children.classList.toggle('hidden');
+    const expanded = button.getAttribute('aria-expanded') !== 'false';
+    button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    button.textContent = expanded ? '▶' : '▼';
+  }
+
+  function toggleChildCheckboxes(checkbox) {
+    const node = checkbox.closest('[data-node]');
+    if (!node) return;
+    const descendants = node.querySelectorAll('input[type="checkbox"][name="category_urls"]');
+    descendants.forEach(cb => {
+      if (cb !== checkbox) {
+        cb.checked = checkbox.checked;
+      }
+    });
+  }
+
+  function setSubtree(button, value) {
+    const node = button.closest('[data-node]');
+    if (!node) return;
+    const checkboxes = node.querySelectorAll('input[type="checkbox"][name="category_urls"]');
     checkboxes.forEach(cb => cb.checked = value);
   }
 </script>

@@ -12,7 +12,8 @@ def get_openai_client():
     except Exception:
         raise RuntimeError("Не знайдено config.json")
 
-    key = cfg.get("openai_api_key", "").strip()
+    keys = cfg.get("openai_keys", [])
+    key = keys[0].get("api_key", "").strip() if keys else ""
     if not key:
         raise RuntimeError("OpenAI API key не встановлено")
 
