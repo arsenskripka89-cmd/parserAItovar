@@ -13,7 +13,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from config import get_async_openai_client
+from parser_engine.fallback_logic import (
+    collect_categories_with_fallback,
+    scrape_products_with_self_heal,
+)
+from parser_engine.matcher_ai import match_products_with_competitors
+from parser_engine.scraper import DEFAULT_RULES
+from parser_engine.rule_detector_ai import generate_rules
 
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = BASE_DIR / "storage"
@@ -166,6 +172,29 @@ def load_competitor_rules(competitor_id: str) -> Dict[str, Any]:
 
 def load_competitor_products(competitor_id: str) -> Dict[str, Any]:
     return load_json_file(get_products_path(competitor_id), {"categories": []})
+
+
+# --- Product detail helpers ---
+
+
+def _find_product(code: str) -> Dict[str, Any] | None:
+    products = load_json_file(PRODUCTS_FILE, [])
+    for product in products:
+        if str(product.get("code")) == str(code):
+            return product
+    return None
+
+
+def _flatten_competitor_items(competitor_id: str) -> List[Dict[str, Any]]:
+    data = load_competitor_products(competitor_id)
+    flattened: List[Dict[str, Any]] = []
+    for category in data.get("categories", []):
+        cat_url = category.get("url", "")
+        for item in category.get("items", []):
+            if not isinstance(item, dict):
+                continue
+            flattened.append({**item, "category_url": cat_url})
+    return flattened
 
 
 # --- Category helpers ---
@@ -341,8 +370,63 @@ async def upload_products(file: UploadFile) -> RedirectResponse:
         df = pd.read_excel(file.file, dtype=str)
 
     products = dataframe_to_products(df)
-    save_json_file(PRODUCTS_FILE, products)
+    existing = load_json_file(PRODUCTS_FILE, [])
+    combined: Dict[str, Dict[str, Any]] = {str(item.get("code")): item for item in existing if item.get("code")}
+    for product in products:
+        code = str(product.get("code")) if product.get("code") is not None else ""
+        combined[code] = product
+
+    save_json_file(PRODUCTS_FILE, list(combined.values()))
     return RedirectResponse(url="/products?uploaded=1", status_code=303)
+
+
+@app.post("/products/save")
+async def save_products_base() -> RedirectResponse:
+    products = load_json_file(PRODUCTS_FILE, [])
+    save_json_file(PRODUCTS_FILE, products)
+    return RedirectResponse(url="/products?saved=1", status_code=303)
+
+
+@app.get("/products/{code}", response_class=HTMLResponse)
+async def product_detail(request: Request, code: str) -> HTMLResponse:
+    product = _find_product(code)
+    if not product:
+        raise HTTPException(status_code=404, detail="Товар не знайдено")
+
+    matches = [m for m in load_json_file(MATCH_FILE, []) if str(m.get("our_code")) == str(code)]
+    competitors_map = {str(c.get("id")): c for c in list_competitors()}
+
+    competitor_cards: List[Dict[str, Any]] = []
+    for match in matches:
+        competitor_id = str(match.get("competitor_id"))
+        competitor = competitors_map.get(competitor_id, {})
+        items = _flatten_competitor_items(competitor_id)
+        matched_item = next(
+            (item for item in items if str(item.get("url")) == str(match.get("competitor_url"))), None
+        )
+
+        competitor_cards.append(
+            {
+                "id": competitor_id,
+                "name": match.get("competitor_name") or competitor.get("name", "Конкурент"),
+                "url": match.get("competitor_url"),
+                "price": match.get("competitor_price") or (matched_item or {}).get("price"),
+                "confidence": match.get("confidence"),
+                "available": (matched_item or {}).get("available"),
+                "category_url": (matched_item or {}).get("category_url"),
+            }
+        )
+
+    return templates.TemplateResponse(
+        "product_detail.html",
+        {
+            "request": request,
+            "product": product,
+            "competitor_cards": competitor_cards,
+            "active_tab": "products",
+            "title": f"Товар {product.get('name', '')}",
+        },
+    )
 
 
 @app.get("/matching", response_class=HTMLResponse)
@@ -374,49 +458,29 @@ async def run_matching(competitor_ids: List[str] | str = Form(...)) -> RedirectR
     if not products:
         raise HTTPException(status_code=400, detail="Спочатку завантажте товари")
 
-    competitor = load_json_file(COMPETITOR_FILE, {})
-    root_url = competitor.get("root_url", "").strip()
-    if not root_url:
-        raise HTTPException(status_code=400, detail="Спочатку збережіть URL конкурента")
-
-    data = load_competitor_products(str(competitor.get("id", "")))
-    competitors = [competitor] if competitor else []
+    competitors_map = {str(c.get("id")): c for c in list_competitors()}
+    competitor_ids_list = competitor_ids if isinstance(competitor_ids, list) else [competitor_ids]
+    selected_competitors: List[Dict[str, Any]] = []
     products_by_competitor: Dict[str, List[Dict[str, Any]]] = {}
 
-    try:
-        client = get_async_openai_client()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    matches: List[Dict[str, Any]] = []
-
-    for product in products:
-        prompt = prepare_match_prompt(root_url, product)
-
-        try:
-            completion = await client.chat.completions.create(
-                model="gpt-4.1-mini",
-                temperature=0.2,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Ти допомагаєш знаходити відповідні товари конкурентів. Відповідай JSON.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-            )
-        except Exception as e:
-            print("AI match error:", e)
+    for cid in competitor_ids_list:
+        competitor = competitors_map.get(str(cid))
+        if not competitor:
             continue
 
+        data = load_competitor_products(str(competitor.get("id", "")))
         aggregated: List[Dict[str, Any]] = []
-
         for category in data.get("categories", []):
             aggregated.extend(category.get("items", []))
 
-        products_by_competitor[str(competitor["id"])] = aggregated
+        if aggregated:
+            products_by_competitor[str(competitor.get("id"))] = aggregated
+            selected_competitors.append(competitor)
 
-    matches = match_products_with_competitors(products, competitors, products_by_competitor)
+    if not selected_competitors:
+        raise HTTPException(status_code=400, detail="Немає конкурентів з розпарсеними товарами")
+
+    matches = match_products_with_competitors(products, selected_competitors, products_by_competitor)
     save_json_file(MATCH_FILE, matches)
     return RedirectResponse(url="/matching?ready=1", status_code=303)
 
@@ -430,6 +494,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "request": request,
             "openai_keys": config.get("openai_keys", []),
             "code_length": config.get("code_length", 6),
+            "active_key_id": config.get("active_key_id"),
             "active_tab": "settings",
             "title": "Налаштування",
         },
@@ -446,19 +511,30 @@ async def save_settings(
 ) -> RedirectResponse:
     config = load_json_file(BASE_DIR / "config.json", {"openai_keys": [], "code_length": 6})
     openai_keys = config.get("openai_keys", [])
+    active_key_id = config.get("active_key_id")
 
     if operation == "add_key":
         cleaned_key = api_key.strip()
         if cleaned_key:
+            new_id = str(uuid.uuid4())
             openai_keys.append(
                 {
-                    "id": str(uuid.uuid4()),
+                    "id": new_id,
                     "name": key_name.strip() or "OpenAI ключ",
                     "api_key": cleaned_key,
                 }
             )
+            if not active_key_id:
+                active_key_id = new_id
     elif operation == "delete_key":
         openai_keys = [k for k in openai_keys if str(k.get("id")) != key_id]
+        if str(active_key_id) == str(key_id):
+            active_key_id = openai_keys[0].get("id") if openai_keys else None
+    elif operation == "activate_key":
+        for key in openai_keys:
+            if str(key.get("id")) == key_id:
+                active_key_id = key_id
+                break
 
     try:
         code_length_value = int(code_length) if code_length is not None else int(config.get("code_length", 6))
@@ -468,7 +544,11 @@ async def save_settings(
     if code_length_value < 1:
         code_length_value = 1
 
-    payload = {"openai_keys": openai_keys, "code_length": code_length_value}
+    payload = {
+        "openai_keys": openai_keys,
+        "code_length": code_length_value,
+        "active_key_id": active_key_id,
+    }
     save_json_file(BASE_DIR / "config.json", payload)
     return RedirectResponse(url="/settings?saved=1", status_code=303)
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from difflib import SequenceMatcher
+import json
+from difflib import SequenceMatcher
 from typing import Dict, List, Optional
 
 from config import get_openai_client

@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
+import json
+from typing import Dict, List
+
 from selectolax.parser import HTMLParser
 
 from config import get_openai_client

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
+import random
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 from urllib.parse import urljoin
@@ -37,10 +40,64 @@ class ParsedProduct:
 
 
 async def fetch_html(url: str) -> str:
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.get(url)
-        response.raise_for_status()
-        return response.text
+    headers = {
+        "User-Agent": random.choice(
+            [
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+            ]
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    }
+
+    bypass_cookie = os.getenv("SCRAPER_BYPASS_COOKIE", "").strip()
+    cookies = {}
+    if bypass_cookie:
+        try:
+            cookies = json.loads(bypass_cookie)
+        except Exception:
+            cookies = {"cf_clearance": bypass_cookie}
+
+    async with httpx.AsyncClient(
+        timeout=30,
+        follow_redirects=True,
+        headers=headers,
+        http2=True,
+        cookies=cookies,
+    ) as client:
+        last_error: Exception | None = None
+        for _ in range(2):
+            try:
+                response = await client.get(url)
+                if response.status_code in {403, 429, 503}:
+                    last_error = ScraperError(
+                        f"Доступ обмежено ({response.status_code}). Додайте cookie або проксі для обходу захисту."
+                    )
+                    continue
+
+                text = response.text
+                if _looks_like_captcha(text):
+                    last_error = ScraperError(
+                        "Схоже на CAPTCHA/anti-bot сторінку. Додайте значення SCRAPER_BYPASS_COOKIE або задайте кукі Cloudflare."
+                    )
+                    continue
+
+                response.raise_for_status()
+                return text
+            except Exception as exc:  # pragma: no cover - network handling
+                last_error = exc
+
+        raise ScraperError(str(last_error) if last_error else "Не вдалося завантажити сторінку")
+
+
+def _looks_like_captcha(text: str) -> bool:
+    lowered = text.lower()
+    markers = ["captcha", "cloudflare", "are you human", "підтвердьте"]
+    return any(marker in lowered for marker in markers)
 
 
 def _validate_selector(parser: HTMLParser, selector: str) -> List[HTMLParser]:
