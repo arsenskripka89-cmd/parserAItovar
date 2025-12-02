@@ -72,7 +72,7 @@
           </div>
           <div class="px-3 py-2">
             <ul class="space-y-2">
-              {% for cat in group.items %}
+              {% for cat in group["items"] %}
                 {{ render_category(cat) }}
               {% endfor %}
             </ul>
